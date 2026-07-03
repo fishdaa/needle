@@ -1,17 +1,73 @@
 # Needle
 
-Needle is a Linux-first file search project inspired by Everything and the ES CLI workflow.
-It is organized as a Rust workspace with three parts:
+**Fast local file search for Linux, built as a daemon-backed Rust workspace.**
 
-- `needle-core`: shared indexing, query, and IPC logic
-- `needled`: a background daemon that maintains the index
-- `ndl`: a CLI client for issuing searches
+Needle is an open source project for indexing local files and querying them through a CLI-first workflow. The long-term aim is a search tool that feels immediate in the terminal, stays lightweight in memory, and scales cleanly from interactive use to shell scripts and automation.
+
+## Why Needle
+
+- Fast local search without depending on a GUI
+- Daemon-backed queries for low-latency repeated lookups
+- A CLI workflow designed for piping, scripting, and terminal use
+- A modular Rust codebase with a shared core library
 
 ## Status
 
-The project is early and moving quickly. Expect frequent internal changes until the first stable release.
+Needle is pre-release software and still under active development.
 
-## Development
+- The workspace structure, architecture, and automation are in place
+- Core modules and tests are being built out in the open
+- Public interfaces may still change before `1.0`
+
+If you are evaluating the project today, think of it as an early open source build rather than a finished end-user release.
+
+## Workspace
+
+Needle is split into three crates:
+
+- `needle-core`: indexing, matching, sorting, config, and IPC primitives
+- `needled`: background daemon that builds and serves the index
+- `ndl`: command-line client for querying the daemon
+
+Repository layout:
+
+```text
+.
+├── needle-core/   # shared library
+├── needled/       # daemon binary
+├── ndl/           # CLI binary
+├── needle-docs/   # architecture and design notes
+└── .github/       # CI, release, and repo automation
+```
+
+## Architecture
+
+The intended runtime model is:
+
+1. `needled` scans and watches configured filesystem roots
+2. `needle-core` maintains the in-memory index and query engine
+3. `ndl` sends search requests over a Unix domain socket and prints results
+
+The broader design and indexing strategy are documented in [needle-docs/architecture.md](needle-docs/architecture.md).
+
+## Getting Started
+
+### Requirements
+
+- Linux
+- Rust stable toolchain
+
+The repository includes `rust-toolchain.toml` so the expected toolchain components are installed consistently for contributors.
+
+### Build From Source
+
+```bash
+git clone https://github.com/fishdaa/needle.git
+cd needle
+cargo build --workspace
+```
+
+### Development Checks
 
 ```bash
 cargo fmt --check
@@ -19,13 +75,51 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace --all-targets
 ```
 
-## Versioning and Releases
+Note: parts of the implementation are still stubbed, so some tests currently fail until those modules are completed.
 
-Needle uses SemVer.
+## Project Goals
 
-- Versions are declared once in the workspace root `Cargo.toml`.
-- Git tags use the `vX.Y.Z` format.
-- GitHub Actions runs CI on pushes and pull requests.
-- Pushing a version tag builds release binaries and publishes a GitHub Release.
+- Fast filename and path search on Linux
+- Low-overhead indexing with room for optional metadata tiers
+- Query behavior that works well both interactively and in scripts
+- Clear separation between daemon, CLI, and shared core logic
+- A contributor-friendly codebase with straightforward automation
 
-The detailed release checklist lives in `CONTRIBUTING.md`.
+## Release Model
+
+Needle follows Semantic Versioning.
+
+- The canonical version is declared in the workspace root `Cargo.toml`
+- Git tags use the `vX.Y.Z` format
+- GitHub Actions runs CI on pushes and pull requests
+- Release tags trigger the release workflow and GitHub Release packaging
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution workflow and release checklist.
+
+## Roadmap
+
+Near-term priorities:
+
+- complete the unfinished `needle-core` implementations
+- bring the current test suite to green
+- define the first usable daemon/client interaction flow
+- stabilize basic indexing and search behavior
+- publish the first pre-release binaries
+
+## Contributing
+
+Contributions, bug reports, and design feedback are welcome.
+
+If you want to help:
+
+- read [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow
+- review [needle-docs/architecture.md](needle-docs/architecture.md) for project direction
+- open an issue or pull request for focused, well-scoped changes
+
+## Security
+
+For security-sensitive reports, follow the guidance in [SECURITY.md](SECURITY.md).
+
+## License
+
+Needle is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the full text.
