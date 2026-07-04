@@ -166,7 +166,7 @@ fn bench_walk_synthetic() {
     let start = Instant::now();
     let mut idx = Index::new();
     let excludes = needle_core::walker::Excludes::new();
-    let count = needle_core::walker::walk(&root, &mut idx, &excludes);
+    let count = needle_core::walker::walk(&root, &mut idx, &excludes, false);
     let elapsed = start.elapsed();
 
     println!();

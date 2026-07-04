@@ -105,6 +105,45 @@ fn test_remove_entry() {
 }
 
 #[test]
+fn test_remove_swapped_entry_remains_searchable() {
+    let mut idx = Index::new();
+    idx.insert("/tmp/alpha.log", false);
+    idx.insert("/tmp/bravo.log", false);
+    idx.insert("/tmp/charlie.log", false);
+
+    assert!(idx.remove("/tmp/bravo.log"));
+
+    let ids = idx.search_substring("charlie");
+    assert_eq!(ids.len(), 1);
+    assert_eq!(idx.get_path(ids[0]), Some("/tmp/charlie.log"));
+}
+
+#[test]
+fn test_remove_swapped_entry_can_be_removed_after_prior_delete() {
+    let mut idx = Index::new();
+    idx.insert("/tmp/alpha.log", false);
+    idx.insert("/tmp/cobra-a.log", false);
+    idx.insert("/tmp/cobra-b.log", false);
+    idx.insert("/tmp/cobra-c.log", false);
+    idx.insert("/tmp/cobra-d.log", false);
+
+    assert!(idx.remove("/tmp/cobra-a.log"));
+
+    let trigram = pack_trigram(b'o', b'b', b'r');
+    let list = idx.trigrams.get(&trigram).expect("cobra trigram bucket exists");
+    assert!(
+        list.windows(2).all(|w| w[0] < w[1]),
+        "trigram posting list must remain sorted after swap_remove, got {:?}",
+        list
+    );
+    assert!(
+        idx.remove("/tmp/cobra-d.log"),
+        "swapped entry should still be removable"
+    );
+    assert!(idx.search_substring("cobra-d").is_empty());
+}
+
+#[test]
 fn test_update_metadata_no_panic() {
     let mut idx = sample_index();
     assert!(idx.update_metadata("/home/alice/docs/foo.txt"));

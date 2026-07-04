@@ -109,10 +109,14 @@ fn build_index(state_dir: &Path, config: &Config) -> (Index, u64) {
     };
 
     let roots = discover_roots(config);
+    let fetch_metadata = config.index_size
+        || config.index_date_modified
+        || config.index_date_created
+        || config.index_date_accessed;
     eprintln!("Indexing roots: {:?}", roots);
     for root in roots {
         let count_before = index.count();
-        walk(&root, &mut index, &excludes);
+        walk(&root, &mut index, &excludes, fetch_metadata);
         eprintln!(
             "Indexed {} entries from {}",
             index.count() - count_before,

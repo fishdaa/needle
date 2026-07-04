@@ -180,7 +180,7 @@ fn profile_walk(iterations: usize) {
 
     for _ in 0..iterations {
         let mut idx = Index::new();
-        total_entries += walker::walk(&root, &mut idx, &excludes);
+        total_entries += walker::walk(&root, &mut idx, &excludes, false);
         black_box(idx);
     }
 

@@ -306,10 +306,31 @@ impl Index {
             }
         }
 
+        let old_last_id = self.entries.len() as u32 - 1;
         self.entries.swap_remove(id as usize);
 
-        if (id as usize) < self.entries.len() {
-            self.rebuild_maps();
+        if id != old_last_id {
+            let swapped_entry = &self.entries[id as usize];
+            let swapped_hash = fnv1a_64(swapped_entry.path.as_bytes());
+            self.path_to_id.insert(swapped_hash, id);
+
+            let swapped_name_lower = lowered_bytes(swapped_entry.name());
+            for trigram in unique_trigrams(&swapped_name_lower) {
+                if let Some(list) = self.trigrams.get_mut(&trigram) {
+                    replace_sorted_id(list, old_last_id, id);
+                }
+            }
+            if let Some(&first_byte) = swapped_name_lower.first() {
+                if let Some(list) = self.prefix_first_byte.get_mut(&first_byte) {
+                    replace_sorted_id(list, old_last_id, id);
+                }
+            }
+            if !swapped_entry.is_dir {
+                let swapped_ext = swapped_entry.extension().to_string();
+                if let Some(list) = self.by_ext.get_mut(&swapped_ext) {
+                    replace_sorted_id(list, old_last_id, id);
+                }
+            }
         }
 
         true
@@ -414,6 +435,7 @@ impl Index {
             + self.prefix_first_byte.capacity() * 16
     }
 
+    #[allow(dead_code)]
     fn rebuild_maps(&mut self) {
         self.path_to_id.clear();
         self.by_ext.clear();
@@ -452,7 +474,16 @@ impl Index {
     }
 }
 
-#[cfg(test)]
-mod performance_tests;
+fn replace_sorted_id(list: &mut Vec<u32>, old_id: u32, new_id: u32) {
+    if old_id == new_id {
+        return;
+    }
+    if let Ok(pos) = list.binary_search(&old_id) {
+        list.remove(pos);
+        let insert_at = list.binary_search(&new_id).unwrap_or_else(|pos| pos);
+        list.insert(insert_at, new_id);
+    }
+}
+
 #[cfg(test)]
 mod tests;

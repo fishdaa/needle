@@ -31,7 +31,7 @@ fn temp_dir_with_files() -> (tempfile::TempDir, Vec<String>) {
 fn test_walk_indexes_all_files_and_dirs() {
     let (dir, _paths) = temp_dir_with_files();
     let mut idx = Index::new();
-    let count = walk(dir.path(), &mut idx, &Excludes::new());
+    let count = walk(dir.path(), &mut idx, &Excludes::new(), false);
     assert!(
         count >= 6,
         "expected at least 4 files + 2 dirs, got {}",
@@ -54,13 +54,13 @@ fn test_walk_skips_hidden_when_configured() {
     fs::write(dir.path().join("visible.txt"), "x").unwrap();
 
     let mut idx_all = Index::new();
-    walk(dir.path(), &mut idx_all, &Excludes::new());
+    walk(dir.path(), &mut idx_all, &Excludes::new(), false);
     assert!(!idx_all.search_substring("secret.txt").is_empty());
 
     let mut idx_hidden = Index::new();
     let mut ex = Excludes::new();
     ex.skip_hidden = true;
-    walk(dir.path(), &mut idx_hidden, &ex);
+    walk(dir.path(), &mut idx_hidden, &ex, false);
     assert!(idx_hidden.search_substring("secret.txt").is_empty());
     assert!(!idx_hidden.search_substring("visible.txt").is_empty());
 }
@@ -76,7 +76,7 @@ fn test_walk_skips_pattern_matches() {
     ex.patterns = vec!["*.tmp".into(), "*.swp".into()];
 
     let mut idx = Index::new();
-    walk(dir.path(), &mut idx, &ex);
+    walk(dir.path(), &mut idx, &ex, false);
     assert!(!idx.search_substring("keep.txt").is_empty());
     assert!(idx.search_substring("drop.tmp").is_empty());
     assert!(idx.search_substring("drop.swp").is_empty());
@@ -93,7 +93,7 @@ fn test_walk_skips_folder_patterns() {
     ex.folders = vec!["**/node_modules".into()];
 
     let mut idx = Index::new();
-    walk(dir.path(), &mut idx, &ex);
+    walk(dir.path(), &mut idx, &ex, false);
     assert!(idx.search_substring("pkg.js").is_empty());
     assert!(!idx.search_substring("app.js").is_empty());
 }
@@ -108,9 +108,39 @@ fn test_walk_include_only_restricts_to_patterns() {
     ex.include_only = vec!["*.rs".into()];
 
     let mut idx = Index::new();
-    walk(dir.path(), &mut idx, &ex);
+    walk(dir.path(), &mut idx, &ex, false);
     assert!(idx.search_substring("a.txt").is_empty());
     assert!(!idx.search_substring("b.rs").is_empty());
+}
+
+#[test]
+fn test_walk_without_metadata_leaves_fields_zeroed() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("file.txt"), "hello").unwrap();
+
+    let mut idx = Index::new();
+    walk(dir.path(), &mut idx, &Excludes::new(), false);
+
+    let id = idx.search_substring("file.txt")[0] as usize;
+    let entry = &idx.entries[id];
+    assert_eq!(entry.size, 0);
+    assert_eq!(entry.modified, 0);
+    assert_eq!(entry.created, 0);
+    assert_eq!(entry.accessed, 0);
+}
+
+#[test]
+fn test_walk_with_metadata_populates_file_fields() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("file.txt"), "hello").unwrap();
+
+    let mut idx = Index::new();
+    walk(dir.path(), &mut idx, &Excludes::new(), true);
+
+    let id = idx.search_substring("file.txt")[0] as usize;
+    let entry = &idx.entries[id];
+    assert_eq!(entry.size, 5);
+    assert!(entry.modified > 0);
 }
 
 #[test]

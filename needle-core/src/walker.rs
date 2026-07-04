@@ -61,7 +61,8 @@ impl Excludes {
 }
 
 /// Walk a directory tree and insert entries into the index.
-pub fn walk(root: &Path, index: &mut Index, excludes: &Excludes) -> usize {
+/// When `fetch_metadata` is false, size/timestamps are set to 0 to avoid a `stat` syscall per file.
+pub fn walk(root: &Path, index: &mut Index, excludes: &Excludes, fetch_metadata: bool) -> usize {
     let mut count = 0;
     let mut stack: Vec<PathBuf> = vec![root.to_path_buf()];
 
@@ -86,35 +87,39 @@ pub fn walk(root: &Path, index: &mut Index, excludes: &Excludes) -> usize {
                 continue;
             }
 
-            let metadata = entry.metadata().ok();
-            let size = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
-            let modified = metadata
-                .as_ref()
-                .and_then(|m| m.modified().ok())
-                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                .map(|d| d.as_secs() as i64)
-                .unwrap_or(0);
-            let created = metadata
-                .as_ref()
-                .and_then(|m| m.created().ok())
-                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                .map(|d| d.as_secs() as i64)
-                .unwrap_or(0);
-            let accessed = metadata
-                .as_ref()
-                .and_then(|m| m.accessed().ok())
-                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                .map(|d| d.as_secs() as i64)
-                .unwrap_or(0);
+            if fetch_metadata {
+                let metadata = entry.metadata().ok();
+                let size = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
+                let modified = metadata
+                    .as_ref()
+                    .and_then(|m| m.modified().ok())
+                    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
+                let created = metadata
+                    .as_ref()
+                    .and_then(|m| m.created().ok())
+                    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
+                let accessed = metadata
+                    .as_ref()
+                    .and_then(|m| m.accessed().ok())
+                    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
 
-            index.insert_with_metadata(
-                path.to_str().unwrap_or(""),
-                is_dir,
-                size,
-                modified,
-                created,
-                accessed,
-            );
+                index.insert_with_metadata(
+                    path.to_str().unwrap_or(""),
+                    is_dir,
+                    size,
+                    modified,
+                    created,
+                    accessed,
+                );
+            } else {
+                index.insert_with_metadata(path.to_str().unwrap_or(""), is_dir, 0, 0, 0, 0);
+            }
             count += 1;
 
             if is_dir {
