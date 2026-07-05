@@ -67,6 +67,5 @@ jobs:
 
             Version: `${{ steps.nightly.outputs.version }}`
           files: |
-            dist/needle-*.tar.gz
-            dist/needle-*.sha256
-
+            dist/toge-*.tar.gz
+            dist/toge-*.sha256

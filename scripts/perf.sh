@@ -37,7 +37,7 @@ require_cmd() {
 }
 
 build_profile_example() {
-    cargo build --release --example profile -p needle-core >/dev/null
+    cargo build --release --example profile -p toge-core >/dev/null
 }
 
 profile_binary() {

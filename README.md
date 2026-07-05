@@ -1,10 +1,10 @@
-# Needle
+# Toge
 
 **Fast local file search for Linux, built as a daemon-backed Rust workspace.**
 
-Needle is an open source project for indexing local files and querying them through a CLI-first workflow. The long-term aim is a search tool that feels immediate in the terminal, stays lightweight in memory, and scales cleanly from interactive use to shell scripts and automation.
+Toge is an open source project for indexing local files and querying them through a CLI-first workflow. The long-term aim is a search tool that feels immediate in the terminal, stays lightweight in memory, and scales cleanly from interactive use to shell scripts and automation.
 
-## Why Needle
+## Why Toge
 
 - Fast local search without depending on a GUI
 - Daemon-backed queries for low-latency repeated lookups
@@ -13,7 +13,7 @@ Needle is an open source project for indexing local files and querying them thro
 
 ## Status
 
-Needle is pre-release software and still under active development.
+Toge is pre-release software and still under active development.
 
 - The workspace structure, architecture, and automation are in place
 - Core modules and tests are being built out in the open
@@ -23,19 +23,19 @@ If you are evaluating the project today, think of it as an early open source bui
 
 ## Workspace
 
-Needle is split into three crates:
+Toge is split into three crates:
 
-- `needle-core`: indexing, matching, sorting, config, and IPC primitives
-- `needled`: background daemon that builds and serves the index
-- `ndl`: command-line client for querying the daemon
+- `toge-core`: indexing, matching, sorting, config, and IPC primitives
+- `toged`: background daemon that builds and serves the index
+- `toge`: command-line client for querying the daemon
 
 Repository layout:
 
 ```text
 .
 ├── needle-core/   # shared library
-├── needled/       # daemon binary
-├── ndl/           # CLI binary
+├── needled/       # daemon binary sources
+├── ndl/           # CLI binary sources
 ├── needle-docs/   # architecture and design notes
 └── .github/       # CI, release, and repo automation
 ```
@@ -44,9 +44,9 @@ Repository layout:
 
 The intended runtime model is:
 
-1. `needled` scans and watches configured filesystem roots
-2. `needle-core` maintains the in-memory index and query engine
-3. `ndl` sends search requests over a Unix domain socket and prints results
+1. `toged` scans and watches configured filesystem roots
+2. `toge-core` maintains the in-memory index and query engine
+3. `toge` sends search requests over a Unix domain socket and prints results
 
 The broader design and indexing strategy are documented in [needle-docs/architecture.md](needle-docs/architecture.md).
 
@@ -80,8 +80,8 @@ Note: parts of the implementation are still stubbed, so some tests currently fai
 ### Benchmarks And Profiling
 
 ```bash
-cargo run --release --example bench -p needle-core
-cargo run --release --example profile -p needle-core -- insert
+cargo run --release --example bench -p toge-core
+cargo run --release --example profile -p toge-core -- insert
 bash scripts/perf.sh run substring-miss substring-miss
 bash scripts/perf.sh run substring-hit substring-hit
 bash scripts/bench.sh run baseline
@@ -117,7 +117,7 @@ The current perf takeaways and optimization notes live in `needle-docs/findings.
 
 ## Release Model
 
-Needle follows Semantic Versioning.
+Toge follows Semantic Versioning.
 
 - The canonical version is declared in the workspace root `Cargo.toml`
 - Stable Git tags use the `vX.Y.Z` format
@@ -134,7 +134,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution workflow and release
 
 Near-term priorities:
 
-- complete the unfinished `needle-core` implementations
+- complete the unfinished `toge-core` implementations
 - bring the current test suite to green
 - define the first usable daemon/client interaction flow
 - stabilize basic indexing and search behavior
@@ -156,4 +156,4 @@ For security-sensitive reports, follow the guidance in [SECURITY.md](SECURITY.md
 
 ## License
 
-Needle is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the full text.
+Toge is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the full text.

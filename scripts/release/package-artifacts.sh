@@ -15,13 +15,13 @@ if [[ -z "$artifact_version" ]]; then
   exit 1
 fi
 
-release_name="needle-${artifact_version}-${target_triple}"
+release_name="toge-${artifact_version}-${target_triple}"
 release_dir="release/${release_name}"
 
 rm -rf "$release_dir" dist
 mkdir -p "$release_dir" dist
-cp target/release/ndl "$release_dir"/
-cp target/release/needled "$release_dir"/
+cp target/release/toge "$release_dir"/
+cp target/release/toged "$release_dir"/
 cp README.md CHANGELOG.md LICENSE "$release_dir"/
 tar -C release -czf "dist/${release_name}.tar.gz" "$(basename "$release_dir")"
 sha256sum "dist/${release_name}.tar.gz" >"dist/${release_name}.sha256"

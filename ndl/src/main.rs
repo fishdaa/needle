@@ -1,8 +1,8 @@
-//! ndl — CLI client for needled.
+//! toge — CLI client for toged.
 
-use needle_core::highlight::render_ansi;
-use needle_core::ipc::{OutputFormat as IpcFormat, QueryRequest, Request, Response};
-use needle_core::opts::{NdlOptions, OutputFormat};
+use toge_core::highlight::render_ansi;
+use toge_core::ipc::{OutputFormat as IpcFormat, QueryRequest, Request, Response};
+use toge_core::opts::{NdlOptions, OutputFormat};
 use std::env;
 use std::fs;
 use std::io::{self, Read, Write};
@@ -13,7 +13,7 @@ use std::thread;
 use std::time::Duration;
 
 fn usage() {
-    println!("ndl [options] <search text>");
+    println!("toge [options] <search text>");
     println!();
     println!("Search options:");
     println!("  -r, -regex <search>   Regex search");
@@ -32,7 +32,7 @@ fn usage() {
 }
 
 fn version() {
-    println!("ndl 0.1.1");
+    println!("toge 0.1.1");
 }
 
 fn default_state_dir() -> PathBuf {
@@ -42,21 +42,21 @@ fn default_state_dir() -> PathBuf {
             let home = env::var_os("HOME").expect("HOME not set");
             PathBuf::from(home).join(".local/state")
         })
-        .join("needle")
+        .join("toge")
 }
 
 fn socket_path() -> PathBuf {
-    env::var_os("NEEDLE_SOCKET")
+    env::var_os("TOGE_SOCKET")
         .map(PathBuf::from)
-        .unwrap_or_else(|| default_state_dir().join("needled.sock"))
+        .unwrap_or_else(|| default_state_dir().join("toged.sock"))
 }
 
 fn ensure_daemon_running(sock: &Path) {
     if sock.exists() {
         return;
     }
-    eprintln!("needled is not running. Starting it...");
-    let _ = Command::new("needled").spawn();
+    eprintln!("toged is not running. Starting it...");
+    let _ = Command::new("toged").spawn();
     for _ in 0..10 {
         thread::sleep(Duration::from_millis(50));
         if sock.exists() {
@@ -118,7 +118,7 @@ fn run_query(
     offset: usize,
     format: OutputFormat,
     highlight: bool,
-) -> io::Result<needle_core::ipc::ResultsResponse> {
+) -> io::Result<toge_core::ipc::ResultsResponse> {
     let mut stream = connect(sock)?;
     let format = match format {
         OutputFormat::Default => IpcFormat::Default,
@@ -197,7 +197,7 @@ fn main() {
     let opts = match NdlOptions::parse(args) {
         Ok(o) => o,
         Err(e) => {
-            eprintln!("ndl: {}", e);
+            eprintln!("toge: {}", e);
             process::exit(2);
         }
     };
@@ -215,7 +215,7 @@ fn main() {
     ensure_daemon_running(&sock);
 
     if !sock.exists() {
-        eprintln!("needled is not running. Start it with: needled &");
+        eprintln!("toged is not running. Start it with: toged &");
         process::exit(8);
     }
 

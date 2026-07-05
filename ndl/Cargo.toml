@@ -1,6 +1,6 @@
 [package]
-name = "ndl"
-description = "CLI client for querying the Needle search daemon"
+name = "toge"
+description = "CLI client for querying the Toge search daemon"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -8,11 +8,11 @@ license.workspace = true
 repository.workspace = true
 
 [[bin]]
-name = "ndl"
+name = "toge"
 path = "src/main.rs"
 
 [dependencies]
-needle-core.workspace = true
+toge-core.workspace = true
 
 [dev-dependencies]
 tempfile = "3"

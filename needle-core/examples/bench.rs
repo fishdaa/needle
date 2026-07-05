@@ -1,7 +1,7 @@
-//! Performance benchmarks for needle-core.
+//! Performance benchmarks for toge-core.
 //! Run with: cargo run --release --example bench
 
-use needle_core::index::Index;
+use toge_core::index::Index;
 use std::fs;
 use std::time::{Duration, Instant};
 
@@ -11,7 +11,7 @@ fn temp_dir() -> std::path::PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    dir.push(format!("needle-bench-{}", id));
+    dir.push(format!("toge-bench-{}", id));
     fs::create_dir_all(&dir).unwrap();
     dir
 }
@@ -165,8 +165,8 @@ fn bench_walk_synthetic() {
 
     let start = Instant::now();
     let mut idx = Index::new();
-    let excludes = needle_core::walker::Excludes::new();
-    let count = needle_core::walker::walk(&root, &mut idx, &excludes, false);
+    let excludes = toge_core::walker::Excludes::new();
+    let count = toge_core::walker::walk(&root, &mut idx, &excludes, false);
     let elapsed = start.elapsed();
 
     println!();
