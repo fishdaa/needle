@@ -1,5 +1,5 @@
 [workspace]
-members = ["needle-core", "needled", "ndl"]
+members = ["toge-core", "toged", "toge"]
 resolver = "2"
 
 [workspace.package]
@@ -10,4 +10,4 @@ license = "Apache-2.0"
 repository = "https://github.com/fishdaa/needle"
 
 [workspace.dependencies]
-toge-core = { package = "toge-core", version = "0.1.7", path = "needle-core" }
+toge-core = { package = "toge-core", version = "0.1.7", path = "toge-core" }

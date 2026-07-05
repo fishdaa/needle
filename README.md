@@ -33,9 +33,9 @@ Repository layout:
 
 ```text
 .
-├── needle-core/   # shared library
-├── needled/       # daemon binary sources
-├── ndl/           # CLI binary sources
+├── toge-core/     # shared library
+├── toged/         # daemon binary sources
+├── toge/          # CLI binary sources
 ├── needle-docs/   # architecture and design notes
 └── .github/       # CI, release, and repo automation
 ```
