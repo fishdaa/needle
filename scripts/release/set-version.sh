@@ -30,7 +30,7 @@ workspace_package_pattern = re.compile(
     re.MULTILINE | re.DOTALL,
 )
 workspace_dependency_pattern = re.compile(
-    r'(\[workspace\.dependencies\][^\[]*?^needle-core = \{ version = ")([^"]+)(")',
+    r'(\[workspace\.dependencies\][^\[]*?^toge-core = \{ version = ")([^"]+)(")',
     re.MULTILINE | re.DOTALL,
 )
 
@@ -44,4 +44,3 @@ manifest.write_text(text)
 PY
 
 cargo metadata --format-version 1 --no-deps >/dev/null
-

@@ -1,6 +1,5 @@
 //! Phase 9 daemon lifecycle integration tests.
 
-use needle_core::ipc::{Request, Response};
 use std::fs;
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
@@ -8,17 +7,18 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::thread;
 use std::time::Duration;
+use toge_core::ipc::{Request, Response};
 
 fn test_dir(name: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("needle-test-{}-{}", std::process::id(), name))
+    std::env::temp_dir().join(format!("toge-test-{}-{}", std::process::id(), name))
 }
 
 fn socket_path(name: &str) -> PathBuf {
-    test_dir(name).join("state").join("needled.sock")
+    test_dir(name).join("state").join("toged.sock")
 }
 
 fn binary_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_BIN_EXE_needled"))
+    PathBuf::from(env!("CARGO_BIN_EXE_toged"))
 }
 
 fn spawn_needled(args: &[&str]) -> Child {
@@ -27,7 +27,7 @@ fn spawn_needled(args: &[&str]) -> Child {
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
-        .expect("failed to spawn needled")
+        .expect("failed to spawn toged")
 }
 
 fn wait_for_socket(path: &Path, timeout_ms: u64) -> bool {

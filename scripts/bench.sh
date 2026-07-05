@@ -85,7 +85,7 @@ run_bench() {
     text_file="$history_dir/$base_name.txt"
     tsv_file="$history_dir/$base_name.tsv"
 
-    cargo run --release --example bench -p needle-core | tee "$text_file"
+    cargo run --release --example bench -p toge-core | tee "$text_file"
     parse_bench_output "$text_file" "$tsv_file"
 
     cp "$text_file" "$out_dir/latest.txt"

@@ -66,5 +66,5 @@ jobs:
           prerelease: false
           make_latest: true
           files: |
-            dist/needle-*.tar.gz
-            dist/needle-*.sha256
+            dist/toge-*.tar.gz
+            dist/toge-*.sha256

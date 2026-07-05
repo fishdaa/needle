@@ -1,14 +1,5 @@
-//! needled — background indexing daemon.
+//! toged — background indexing daemon.
 
-use needle_core::config::Config;
-use needle_core::index::Index;
-use needle_core::ipc::{QueryRequest, Request, Response, ResultsResponse, StatusResponse};
-use needle_core::matcher::match_query;
-use needle_core::query::Query;
-use needle_core::sort::{sort_ids, SortKey};
-use needle_core::sys::FsWatcher;
-use needle_core::sys::{InotifyWatcher, WatchEvent};
-use needle_core::walker::{walk, Excludes};
 use std::env;
 use std::fs;
 use std::io::{self, Read, Write};
@@ -18,6 +9,15 @@ use std::process;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Instant, SystemTime};
+use toge_core::config::Config;
+use toge_core::index::Index;
+use toge_core::ipc::{QueryRequest, Request, Response, ResultsResponse, StatusResponse};
+use toge_core::matcher::match_query;
+use toge_core::query::Query;
+use toge_core::sort::{sort_ids, SortKey};
+use toge_core::sys::FsWatcher;
+use toge_core::sys::{InotifyWatcher, WatchEvent};
+use toge_core::walker::{walk, Excludes};
 
 struct DaemonState {
     index: Index,
@@ -35,7 +35,7 @@ struct WatcherStatus {
 }
 
 fn usage() {
-    println!("needled [options]");
+    println!("toged [options]");
     println!("Options:");
     println!("  --socket <path>     Unix domain socket path");
     println!("  --config <path>     Config file path");
@@ -46,7 +46,7 @@ fn usage() {
 }
 
 fn version() {
-    println!("needled 0.1.1");
+    println!("toged 0.1.1");
 }
 
 fn default_state_dir() -> PathBuf {
@@ -56,7 +56,7 @@ fn default_state_dir() -> PathBuf {
             let home = env::var_os("HOME").expect("HOME not set");
             PathBuf::from(home).join(".local/state")
         })
-        .join("needle")
+        .join("toge")
 }
 
 fn default_config_dir() -> PathBuf {
@@ -66,7 +66,7 @@ fn default_config_dir() -> PathBuf {
             let home = env::var_os("HOME").expect("HOME not set");
             PathBuf::from(home).join(".config")
         })
-        .join("needle")
+        .join("toge")
 }
 
 fn discover_roots(config: &Config) -> Vec<PathBuf> {
@@ -322,10 +322,10 @@ fn highlight_path(path: &str, query: &Query) -> String {
     }
 }
 
-fn term_needles(term: &needle_core::query::TextTerm) -> Vec<String> {
+fn term_needles(term: &toge_core::query::TextTerm) -> Vec<String> {
     match term {
-        needle_core::query::TextTerm::Substring(s) => vec![s.clone()],
-        needle_core::query::TextTerm::Wildcard(p) => {
+        toge_core::query::TextTerm::Substring(s) => vec![s.clone()],
+        toge_core::query::TextTerm::Wildcard(p) => {
             let clean: String = p.chars().filter(|c| *c != '*' && *c != '?').collect();
             if clean.is_empty() {
                 Vec::new()
@@ -333,7 +333,7 @@ fn term_needles(term: &needle_core::query::TextTerm) -> Vec<String> {
                 vec![clean]
             }
         }
-        needle_core::query::TextTerm::Regex(p) => {
+        toge_core::query::TextTerm::Regex(p) => {
             let clean: String = p.chars().filter(|c| c.is_alphanumeric()).collect();
             if clean.is_empty() {
                 Vec::new()
@@ -341,27 +341,27 @@ fn term_needles(term: &needle_core::query::TextTerm) -> Vec<String> {
                 vec![clean]
             }
         }
-        needle_core::query::TextTerm::Not(_) => Vec::new(),
-        needle_core::query::TextTerm::Or(items) => items.iter().flat_map(term_needles).collect(),
+        toge_core::query::TextTerm::Not(_) => Vec::new(),
+        toge_core::query::TextTerm::Or(items) => items.iter().flat_map(term_needles).collect(),
     }
 }
 
-fn sort_params(sort: needle_core::query::Sort) -> (SortKey, bool) {
+fn sort_params(sort: toge_core::query::Sort) -> (SortKey, bool) {
     match sort {
-        needle_core::query::Sort::NameAsc => (SortKey::Name, true),
-        needle_core::query::Sort::NameDesc => (SortKey::Name, false),
-        needle_core::query::Sort::PathAsc => (SortKey::Path, true),
-        needle_core::query::Sort::PathDesc => (SortKey::Path, false),
-        needle_core::query::Sort::SizeAsc => (SortKey::Size, true),
-        needle_core::query::Sort::SizeDesc => (SortKey::Size, false),
-        needle_core::query::Sort::ModifiedAsc => (SortKey::Modified, true),
-        needle_core::query::Sort::ModifiedDesc => (SortKey::Modified, false),
-        needle_core::query::Sort::CreatedAsc => (SortKey::Created, true),
-        needle_core::query::Sort::CreatedDesc => (SortKey::Created, false),
-        needle_core::query::Sort::AccessedAsc => (SortKey::Accessed, true),
-        needle_core::query::Sort::AccessedDesc => (SortKey::Accessed, false),
-        needle_core::query::Sort::ExtensionAsc => (SortKey::Extension, true),
-        needle_core::query::Sort::ExtensionDesc => (SortKey::Extension, false),
+        toge_core::query::Sort::NameAsc => (SortKey::Name, true),
+        toge_core::query::Sort::NameDesc => (SortKey::Name, false),
+        toge_core::query::Sort::PathAsc => (SortKey::Path, true),
+        toge_core::query::Sort::PathDesc => (SortKey::Path, false),
+        toge_core::query::Sort::SizeAsc => (SortKey::Size, true),
+        toge_core::query::Sort::SizeDesc => (SortKey::Size, false),
+        toge_core::query::Sort::ModifiedAsc => (SortKey::Modified, true),
+        toge_core::query::Sort::ModifiedDesc => (SortKey::Modified, false),
+        toge_core::query::Sort::CreatedAsc => (SortKey::Created, true),
+        toge_core::query::Sort::CreatedDesc => (SortKey::Created, false),
+        toge_core::query::Sort::AccessedAsc => (SortKey::Accessed, true),
+        toge_core::query::Sort::AccessedDesc => (SortKey::Accessed, false),
+        toge_core::query::Sort::ExtensionAsc => (SortKey::Extension, true),
+        toge_core::query::Sort::ExtensionDesc => (SortKey::Extension, false),
     }
 }
 
@@ -484,7 +484,7 @@ fn main() {
         .unwrap_or_else(|| Config::load(&config_dir.join("config.toml")))
         .unwrap_or_else(|_| Config::default_config());
 
-    let socket = socket_path.unwrap_or_else(|| state_dir.join("needled.sock"));
+    let socket = socket_path.unwrap_or_else(|| state_dir.join("toged.sock"));
 
     let state = Arc::new(Mutex::new(DaemonState {
         index: Index::new(),

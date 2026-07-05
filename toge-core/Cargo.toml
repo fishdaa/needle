@@ -1,11 +1,14 @@
 [package]
-name = "needle-core"
-description = "Shared indexing, query parsing, and IPC primitives for Needle"
+name = "toge-core"
+description = "Shared indexing, query parsing, and IPC primitives for Toge"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+
+[lib]
+name = "toge_core"
 
 [features]
 default = []

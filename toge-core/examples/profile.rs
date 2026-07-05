@@ -1,4 +1,4 @@
-//! Profiling driver for needle-core hot paths.
+//! Profiling driver for toge-core hot paths.
 //!
 //! Run with:
 //!   cargo run --release --example profile -- insert
@@ -10,13 +10,13 @@
 //!   samply record cargo run --release --example profile -- walk
 //!   heaptrack cargo run --release --example profile -- insert
 
-use needle_core::index::Index;
-use needle_core::walker::{self, Excludes};
 use std::env;
 use std::fs;
 use std::hint::black_box;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
+use toge_core::index::Index;
+use toge_core::walker::{self, Excludes};
 
 const DEFAULT_SIZE: usize = 500_000;
 const DEFAULT_ITERATIONS: usize = 20;
@@ -215,7 +215,7 @@ fn temp_dir() -> PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    dir.push(format!("needle-profile-{id}"));
+    dir.push(format!("toge-profile-{id}"));
     fs::create_dir_all(&dir).unwrap();
     dir
 }

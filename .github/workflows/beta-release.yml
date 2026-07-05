@@ -79,8 +79,8 @@ jobs:
           generate_release_notes: true
           make_latest: false
           files: |
-            dist/needle-*.tar.gz
-            dist/needle-*.sha256
+            dist/toge-*.tar.gz
+            dist/toge-*.sha256
 
       - name: Publish beta crates
         if: ${{ env.CARGO_REGISTRY_TOKEN != '' }}

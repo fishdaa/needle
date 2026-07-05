@@ -1,6 +1,5 @@
-//! CLI display and export integration tests using a real needled instance.
+//! CLI display and export integration tests using a real toged instance.
 
-use needle_core::ipc::{Request, Response};
 use std::fs;
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
@@ -8,23 +7,24 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::thread;
 use std::time::Duration;
+use toge_core::ipc::{Request, Response};
 
 fn test_dir(name: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("needle-cli-test-{}-{}", std::process::id(), name))
+    std::env::temp_dir().join(format!("toge-cli-test-{}-{}", std::process::id(), name))
 }
 
 fn socket_path(name: &str) -> PathBuf {
-    test_dir(name).join("state").join("needled.sock")
+    test_dir(name).join("state").join("toged.sock")
 }
 
 fn needled_binary() -> PathBuf {
-    sibling_binary("needled")
+    sibling_binary("toged")
 }
 
 fn ndl_binary() -> PathBuf {
-    std::env::var_os("CARGO_BIN_EXE_ndl")
+    std::env::var_os("CARGO_BIN_EXE_toge")
         .map(PathBuf::from)
-        .unwrap_or_else(|| sibling_binary("ndl"))
+        .unwrap_or_else(|| sibling_binary("toge"))
 }
 
 fn sibling_binary(name: &str) -> PathBuf {
@@ -41,7 +41,7 @@ fn spawn_needled(args: &[&str]) -> Child {
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
-        .expect("failed to spawn needled")
+        .expect("failed to spawn toged")
 }
 
 fn wait_for_socket(path: &Path, timeout_ms: u64) -> bool {
@@ -57,10 +57,10 @@ fn wait_for_socket(path: &Path, timeout_ms: u64) -> bool {
 
 fn run_ndl(socket: &Path, args: &[&str]) -> std::process::Output {
     Command::new(ndl_binary())
-        .env("NEEDLE_SOCKET", socket)
+        .env("TOGE_SOCKET", socket)
         .args(args)
         .output()
-        .expect("failed to run ndl")
+        .expect("failed to run toge")
 }
 
 fn wait_for_ready(sock: &Path, timeout_ms: u64) -> bool {
