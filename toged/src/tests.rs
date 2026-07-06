@@ -64,7 +64,7 @@ fn query_before_ready_returns_not_ready_error() {
 
 #[test]
 fn highlight_ranges_merge_overlapping_matches() {
-    let highlighted = apply_highlight_ranges("foobar", &mut vec![(0, 3), (3, 6)]);
+    let highlighted = apply_highlight_ranges("foobar", &mut [(0, 3), (3, 6)]);
     assert_eq!(highlighted, "*foobar*");
 }
 
@@ -139,6 +139,6 @@ fn highlight_path_leaves_non_matching_name_unchanged() {
 
 #[test]
 fn highlight_ranges_ignore_invalid_spans() {
-    let highlighted = apply_highlight_ranges("foobar", &mut vec![(10, 12), (4, 4)]);
+    let highlighted = apply_highlight_ranges("foobar", &mut [(10, 12), (4, 4)]);
     assert_eq!(highlighted, "foobar");
 }

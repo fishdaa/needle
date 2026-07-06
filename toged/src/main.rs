@@ -316,7 +316,7 @@ fn highlight_path(path: &str, query: &Query) -> String {
     }
 }
 
-fn apply_highlight_ranges(text: &str, ranges: &mut Vec<(usize, usize)>) -> String {
+fn apply_highlight_ranges(text: &str, ranges: &mut [(usize, usize)]) -> String {
     if ranges.is_empty() {
         return text.to_string();
     }
