@@ -1,4 +1,3 @@
-use crate::format;
 use crate::ipc_client;
 use crate::state::AppState;
 use std::fs;
@@ -24,8 +23,8 @@ pub struct ResultRow {
     pub parent: String,
     pub extension: String,
     pub is_dir: bool,
-    pub size: String,
-    pub modified: String,
+    pub size_bytes: u64,
+    pub modified_unix: i64,
 }
 
 #[derive(serde::Serialize)]
@@ -77,12 +76,8 @@ pub fn search_query(
             parent: row.parent.clone(),
             extension: row.extension.clone(),
             is_dir: row.is_dir,
-            size: if config.index_size {
-                format::format_size(row.size)
-            } else {
-                "—".to_string()
-            },
-            modified: format::format_time(row.modified_unix),
+            size_bytes: row.size,
+            modified_unix: row.modified_unix,
         })
         .collect();
 

@@ -4,11 +4,17 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 GUI_DIR="$SCRIPT_DIR/toge-gui"
 PID_VITE=""
+PID_DAEMON=""
 DEV_RUNTIME_DIR=""
 
 cleanup() {
+  if [ -n "$PID_DAEMON" ] && kill -0 "$PID_DAEMON" 2>/dev/null; then
+    kill "$PID_DAEMON" 2>/dev/null || true
+    wait "$PID_DAEMON" 2>/dev/null || true
+  fi
   if [ -n "$PID_VITE" ] && kill -0 "$PID_VITE" 2>/dev/null; then
     kill "$PID_VITE" 2>/dev/null || true
+    wait "$PID_VITE" 2>/dev/null || true
   fi
   if [ -n "$DEV_RUNTIME_DIR" ] && [ -d "$DEV_RUNTIME_DIR" ]; then
     rm -rf "$DEV_RUNTIME_DIR"
@@ -22,6 +28,10 @@ cargo build -p toged
 
 DEV_RUNTIME_DIR="$(mktemp -d /tmp/toge-gui-dev.XXXXXX)"
 export TOGE_SOCKET="$DEV_RUNTIME_DIR/toged.sock"
+
+echo "Starting toged for this dev session..."
+"$SCRIPT_DIR/target/debug/toged" --socket "$TOGE_SOCKET" &
+PID_DAEMON=$!
 
 echo "Starting Vite dev server..."
 cd "$GUI_DIR"

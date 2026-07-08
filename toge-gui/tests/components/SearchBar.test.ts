@@ -20,11 +20,19 @@ describe('SearchBar', () => {
     expect(screen.getByPlaceholderText('Search files...')).toBeTruthy()
   })
 
+  it('renders the menu bar items', async () => {
+    render(SearchBar)
+    expect(screen.getByRole('menubar', { name: 'Application menu' })).toBeTruthy()
+    expect(screen.getByText('File')).toBeTruthy()
+    expect(screen.getByText('Search')).toBeTruthy()
+    expect(screen.getByText('Help')).toBeTruthy()
+  })
+
   it('shows clear button when query is present', async () => {
     render(SearchBar)
     const input = screen.getByPlaceholderText('Search files...')
     await fireEvent.input(input, { target: { value: 'test' } })
-    expect(screen.getByText('✕')).toBeTruthy()
+    expect(screen.getByLabelText('Clear search')).toBeTruthy()
   })
 
   it('opens the debug window from the diagnostics button', async () => {
@@ -38,7 +46,8 @@ describe('SearchBar', () => {
     vi.mocked(invoke).mockResolvedValue({
       rows: [],
       total_count: 0,
-      total_size: 0
+      total_size: 0,
+      size_indexed: true
     })
 
     render(SearchBar)
@@ -46,10 +55,20 @@ describe('SearchBar', () => {
     await fireEvent.input(input, { target: { value: 'needle' } })
     await fireEvent.keyDown(input, { key: 'Enter' })
 
+    expect(get(query)).toBe('needle')
     expect(invoke).toHaveBeenCalledWith('search_query', {
       query: 'needle sort:name',
-      maxResults: 10000
+      maxResults: 50
     })
+  })
+
+  it('does not commit the query store on plain typing before debounce fires', async () => {
+    render(SearchBar)
+    const input = screen.getByPlaceholderText('Search files...')
+    await fireEvent.input(input, { target: { value: 'needle' } })
+
+    expect((input as HTMLInputElement).value).toBe('needle')
+    expect(get(query)).toBe('')
   })
 
   it('clears the current query on Escape', async () => {
@@ -57,10 +76,9 @@ describe('SearchBar', () => {
     const input = screen.getByPlaceholderText('Search files...')
     await fireEvent.input(input, { target: { value: 'needle' } })
 
-    expect(get(query)).toBe('needle')
-
     await fireEvent.keyDown(input, { key: 'Escape' })
 
+    expect((input as HTMLInputElement).value).toBe('')
     expect(get(query)).toBe('')
   })
 })

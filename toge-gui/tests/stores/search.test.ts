@@ -5,9 +5,20 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn()
 }))
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.resetModules()
   vi.clearAllMocks()
+  localStorage.clear()
+
+  const s = await import('$lib/searchStore')
+  s.clearSearch()
+  s.daemonStatus.set(null)
+  s.diagnosticsLog.set([])
+  s.copyFeedback.set(false)
+  s.reindexing.set(false)
+  s.sortColumn.set('name')
+  s.sortDirection.set('asc')
+  s.setTableColumnWidths([220, 320, 88, 140])
 })
 
 describe('searchStore', () => {
@@ -31,6 +42,27 @@ describe('searchStore', () => {
     expect(get(s.isLoading)).toBe(false)
     expect(get(s.statusText)).toBe('Ready')
     expect(get(s.selectedIndex)).toBe(-1)
+    expect(get(s.sortColumn)).toBe('name')
+    expect(get(s.sortDirection)).toBe('asc')
+    expect(get(s.tableColumnWidths)).toEqual([220, 320, 88, 140])
+  })
+
+  it('persists table UI state without persisting data', async () => {
+    const s = await loadStore()
+    s.sortColumn.set('size')
+    s.sortDirection.set('desc')
+    s.setTableColumnWidths([240, 280, 100, 160])
+    s.results.set([
+      { path: '/a', name: 'a.txt', parent: '/', extension: 'txt', is_dir: false, size_bytes: 10, modified_unix: 0 }
+    ])
+
+    vi.resetModules()
+    const reloaded = await import('$lib/searchStore')
+
+    expect(get(reloaded.sortColumn)).toBe('size')
+    expect(get(reloaded.sortDirection)).toBe('desc')
+    expect(get(reloaded.tableColumnWidths)).toEqual([240, 280, 100, 160])
+    expect(get(reloaded.results)).toEqual([])
   })
 
   it('clears search state', async () => {
@@ -38,7 +70,7 @@ describe('searchStore', () => {
     s.query.set('test')
     s.results.set([{
       path: '/test', name: 'test.txt', parent: '/', extension: 'txt',
-      is_dir: false, size: '10 B', modified: '2024-01-01'
+      is_dir: false, size_bytes: 10, modified_unix: 1704067200
     }])
     s.selectedIndex.set(0)
 
@@ -52,8 +84,8 @@ describe('searchStore', () => {
   it('selects next row', async () => {
     const s = await loadStore()
     s.results.set([
-      { path: '/a', name: 'a.txt', parent: '/', extension: 'txt', is_dir: false, size: '10 B', modified: '' },
-      { path: '/b', name: 'b.txt', parent: '/', extension: 'txt', is_dir: false, size: '20 B', modified: '' }
+      { path: '/a', name: 'a.txt', parent: '/', extension: 'txt', is_dir: false, size_bytes: 10, modified_unix: 0 },
+      { path: '/b', name: 'b.txt', parent: '/', extension: 'txt', is_dir: false, size_bytes: 20, modified_unix: 0 }
     ])
     s.selectedIndex.set(0)
 
@@ -65,7 +97,7 @@ describe('searchStore', () => {
   it('does not select past last row', async () => {
     const s = await loadStore()
     s.results.set([
-      { path: '/a', name: 'a.txt', parent: '/', extension: 'txt', is_dir: false, size: '10 B', modified: '' }
+      { path: '/a', name: 'a.txt', parent: '/', extension: 'txt', is_dir: false, size_bytes: 10, modified_unix: 0 }
     ])
     s.selectedIndex.set(0)
 
@@ -77,8 +109,8 @@ describe('searchStore', () => {
   it('selects previous row', async () => {
     const s = await loadStore()
     s.results.set([
-      { path: '/a', name: 'a.txt', parent: '/', extension: 'txt', is_dir: false, size: '10 B', modified: '' },
-      { path: '/b', name: 'b.txt', parent: '/', extension: 'txt', is_dir: false, size: '20 B', modified: '' }
+      { path: '/a', name: 'a.txt', parent: '/', extension: 'txt', is_dir: false, size_bytes: 10, modified_unix: 0 },
+      { path: '/b', name: 'b.txt', parent: '/', extension: 'txt', is_dir: false, size_bytes: 20, modified_unix: 0 }
     ])
     s.selectedIndex.set(1)
 
@@ -90,7 +122,7 @@ describe('searchStore', () => {
   it('does not select before first row', async () => {
     const s = await loadStore()
     s.results.set([
-      { path: '/a', name: 'a.txt', parent: '/', extension: 'txt', is_dir: false, size: '10 B', modified: '' }
+      { path: '/a', name: 'a.txt', parent: '/', extension: 'txt', is_dir: false, size_bytes: 10, modified_unix: 0 }
     ])
     s.selectedIndex.set(0)
 
@@ -200,14 +232,14 @@ describe('searchStore', () => {
 
     expect(invoke).not.toHaveBeenCalled()
 
-    await vi.advanceTimersByTimeAsync(249)
+    await vi.advanceTimersByTimeAsync(299)
     expect(invoke).not.toHaveBeenCalled()
 
     await vi.advanceTimersByTimeAsync(1)
     expect(invoke).toHaveBeenCalledTimes(1)
     expect(invoke).toHaveBeenCalledWith('search_query', {
       query: 'foo sort:name',
-      maxResults: 10000
+      maxResults: 50
     })
 
     vi.useRealTimers()
@@ -216,8 +248,8 @@ describe('searchStore', () => {
   it('ignores stale search responses when a newer search finishes later', async () => {
     const s = await loadStore()
     const { invoke } = await import('@tauri-apps/api/core')
-    const first = deferred<{ rows: never[]; total_count: number; total_size: number }>()
-    const second = deferred<{ rows: { path: string; name: string; parent: string; extension: string; is_dir: boolean; size: string; modified: string }[]; total_count: number; total_size: number }>()
+    const first = deferred<{ rows: never[]; total_count: number; total_size: number; size_indexed: boolean }>()
+    const second = deferred<{ rows: { path: string; name: string; parent: string; extension: string; is_dir: boolean; size_bytes: number; modified_unix: number }[]; total_count: number; total_size: number; size_indexed: boolean }>()
 
     vi.mocked(invoke)
       .mockReturnValueOnce(first.promise as ReturnType<typeof invoke>)
@@ -235,8 +267,8 @@ describe('searchStore', () => {
         parent: '/',
         extension: 'txt',
         is_dir: false,
-        size: '1 B',
-        modified: ''
+        size_bytes: 1,
+        modified_unix: 0
       }],
       total_count: 1,
       total_size: 1,
@@ -259,8 +291,8 @@ describe('searchStore', () => {
       parent: '/',
       extension: 'txt',
       is_dir: false,
-      size: '1 B',
-      modified: ''
+      size_bytes: 1,
+      modified_unix: 0
     }])
     expect(get(s.totalCount)).toBe(1)
     expect(get(s.statusText)).toBe('1 results | 1.0 B')
@@ -281,6 +313,29 @@ describe('searchStore', () => {
     await s.search()
 
     expect(get(s.statusText)).toBe('7 results | size unavailable')
+  })
+
+  it('clears the committed query when a debounced search becomes empty', async () => {
+    const s = await loadStore()
+    const { invoke } = await import('@tauri-apps/api/core')
+
+    vi.mocked(invoke).mockResolvedValueOnce({
+      rows: [
+        { path: '/movie.mkv', name: 'movie.mkv', parent: '/', extension: 'mkv', is_dir: false, size_bytes: 1, modified_unix: 0 }
+      ],
+      total_count: 1,
+      total_size: 1,
+      size_indexed: true
+    })
+
+    await s.search('.mkv')
+    expect(get(s.query)).toBe('.mkv')
+    expect(get(s.results)).toHaveLength(1)
+
+    await s.search('')
+    expect(get(s.query)).toBe('')
+    expect(get(s.results)).toEqual([])
+    expect(get(s.statusText)).toBe('Ready')
   })
 
   it('requests reindex and refreshes daemon status', async () => {
@@ -350,8 +405,8 @@ describe('searchStore', () => {
           parent: '/downloads',
           extension: 'mkv',
           is_dir: false,
-          size: '1.0 GB',
-          modified: ''
+          size_bytes: 1024 * 1024 * 1024,
+          modified_unix: 0
         }],
         total_count: 1,
         total_size: 1024,
@@ -369,7 +424,7 @@ describe('searchStore', () => {
       ['get_status'],
       ['search_query', {
         query: '.mkv sort:name',
-        maxResults: 10000
+        maxResults: 50
       }]
     ])
     expect(get(s.results)).toEqual([{
@@ -378,8 +433,8 @@ describe('searchStore', () => {
       parent: '/downloads',
       extension: 'mkv',
       is_dir: false,
-      size: '1.0 GB',
-      modified: ''
+      size_bytes: 1024 * 1024 * 1024,
+      modified_unix: 0
     }])
   })
 
@@ -392,8 +447,8 @@ describe('searchStore', () => {
         parent: '/downloads',
         extension: 'mp4',
         is_dir: false,
-        size: '512.0 MB',
-        modified: ''
+        size_bytes: 512 * 1024 * 1024,
+        modified_unix: 0
       }
     },
     {
@@ -404,8 +459,8 @@ describe('searchStore', () => {
         parent: '/downloads',
         extension: 'txt',
         is_dir: false,
-        size: '4.0 KB',
-        modified: ''
+        size_bytes: 4 * 1024,
+        modified_unix: 0
       }
     },
     {
@@ -416,8 +471,8 @@ describe('searchStore', () => {
         parent: '/downloads',
         extension: 'zip',
         is_dir: false,
-        size: '128.0 MB',
-        modified: ''
+        size_bytes: 128 * 1024 * 1024,
+        modified_unix: 0
       }
     }
   ])('refreshes active search for $query when daemon status changes', async ({ query, row }) => {
@@ -469,7 +524,7 @@ describe('searchStore', () => {
       ['get_status'],
       ['search_query', {
         query: `${query} sort:name`,
-        maxResults: 10000
+        maxResults: 50
       }]
     ])
     expect(get(s.results)).toEqual([row])

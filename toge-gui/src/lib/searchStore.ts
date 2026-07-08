@@ -9,6 +9,66 @@ import type {
   WatcherSelfTestResult
 } from './types'
 
+const STORAGE_KEYS = {
+  sortColumn: 'toge:table:sort-column',
+  sortDirection: 'toge:table:sort-direction',
+  columnWidths: 'toge:table:column-widths'
+} as const
+
+const DEFAULT_COLUMN_WIDTHS = [220, 320, 88, 140]
+
+function readStorage(key: string): string | null {
+  if (typeof localStorage === 'undefined') return null
+
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function writeStorage(key: string, value: string) {
+  if (typeof localStorage === 'undefined') return
+
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // Ignore storage failures; persistence is a convenience.
+  }
+}
+
+function loadSortColumn(): SortColumn {
+  const value = readStorage(STORAGE_KEYS.sortColumn)
+  return value === 'name' || value === 'path' || value === 'size' || value === 'modified'
+    ? value
+    : 'name'
+}
+
+function loadSortDirection(): SortDirection {
+  const value = readStorage(STORAGE_KEYS.sortDirection)
+  return value === 'asc' || value === 'desc' ? value : 'asc'
+}
+
+function loadColumnWidths(): number[] {
+  const value = readStorage(STORAGE_KEYS.columnWidths)
+  if (!value) return [...DEFAULT_COLUMN_WIDTHS]
+
+  try {
+    const parsed = JSON.parse(value)
+    if (
+      Array.isArray(parsed) &&
+      parsed.length === DEFAULT_COLUMN_WIDTHS.length &&
+      parsed.every((entry) => typeof entry === 'number' && Number.isFinite(entry) && entry > 0)
+    ) {
+      return parsed
+    }
+  } catch {
+    // fall through to defaults
+  }
+
+  return [...DEFAULT_COLUMN_WIDTHS]
+}
+
 export const query = writable('')
 export const results = writable<ResultRow[]>([])
 export const totalCount = writable(0)
@@ -16,13 +76,27 @@ export const totalSize = writable(0)
 export const isLoading = writable(false)
 export const statusText = writable('Ready')
 export const selectedIndex = writable(-1)
-export const sortColumn = writable<SortColumn>('name')
-export const sortDirection = writable<SortDirection>('asc')
+export const sortColumn = writable<SortColumn>(loadSortColumn())
+export const sortDirection = writable<SortDirection>(loadSortDirection())
+export const tableColumnWidths = writable<number[]>(loadColumnWidths())
 export const error = writable<string | null>(null)
 export const daemonStatus = writable<StatusResponse | null>(null)
 export const copyFeedback = writable(false)
 export const diagnosticsLog = writable<string[]>([])
 export const reindexing = writable(false)
+export const sizeIndexed = writable(false)
+
+sortColumn.subscribe((value) => {
+  writeStorage(STORAGE_KEYS.sortColumn, value)
+})
+
+sortDirection.subscribe((value) => {
+  writeStorage(STORAGE_KEYS.sortDirection, value)
+})
+
+tableColumnWidths.subscribe((value) => {
+  writeStorage(STORAGE_KEYS.columnWidths, JSON.stringify(value))
+})
 
 export const hasResults = derived(results, ($results) => $results.length > 0)
 export const indexStatusText = derived(daemonStatus, ($daemonStatus) => {
@@ -39,10 +113,25 @@ export const indexStatusText = derived(daemonStatus, ($daemonStatus) => {
   return `${status} | ${message} | ${count}`
 })
 
-const SEARCH_DEBOUNCE_MS = 250
+const SEARCH_DEBOUNCE_MS = 300
+const GUI_MAX_RESULTS = 50
 
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
 let latestSearchRequestId = 0
+
+function isJsdomRuntime(): boolean {
+  return typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent)
+}
+
+async function yieldForPaint() {
+  await new Promise<void>((resolve) => {
+    if (typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(() => resolve())
+      return
+    }
+    window.setTimeout(resolve, 0)
+  })
+}
 
 function shouldRefreshActiveSearch(
   previous: StatusResponse | null,
@@ -64,35 +153,48 @@ function appendDiagnostics(message: string) {
   })
 }
 
-async function runSearch() {
+async function runSearch(nextQuery?: string) {
   const requestId = ++latestSearchRequestId
-  const q = get(query).trim()
+  const q = (nextQuery ?? get(query)).trim()
 
   if (!q) {
+    query.set('')
     results.set([])
     totalCount.set(0)
     totalSize.set(0)
+    sizeIndexed.set(false)
     statusText.set('Ready')
     isLoading.set(false)
     return
   }
+
+  query.set(q)
+
+  const col = get(sortColumn)
+  const dir = get(sortDirection)
+  const searchQuery = `${q} sort:${col}${dir === 'desc' ? '-desc' : ''}`
 
   isLoading.set(true)
   error.set(null)
   appendDiagnostics(`Search started for "${q}"`)
 
   try {
-    const col = get(sortColumn)
-    const dir = get(sortDirection)
-    const searchQuery = `${q} sort:${col}${dir === 'desc' ? '-desc' : ''}`
+    if (typeof window !== 'undefined' && !isJsdomRuntime()) {
+      await yieldForPaint()
+    }
+
+    if (requestId !== latestSearchRequestId) return
+
     const result = await invoke<SearchResult>('search_query', {
       query: searchQuery,
-      maxResults: 10000
+      maxResults: GUI_MAX_RESULTS
     })
 
     if (requestId !== latestSearchRequestId) return
 
     results.set(result.rows)
+    selectedIndex.set(result.rows.length > 0 ? 0 : -1)
+    sizeIndexed.set(result.size_indexed)
     totalCount.set(result.total_count)
     totalSize.set(result.total_size)
     statusText.set(
@@ -100,7 +202,6 @@ async function runSearch() {
         ? `${result.total_count} results | ${formatSize(result.total_size)}`
         : `${result.total_count} results | size unavailable`
     )
-    selectedIndex.set(result.rows.length > 0 ? 0 : -1)
     appendDiagnostics(`Search returned ${result.total_count} results`)
   } catch (e) {
     if (requestId !== latestSearchRequestId) return
@@ -115,19 +216,19 @@ async function runSearch() {
   }
 }
 
-export function search() {
+export function search(nextQuery?: string) {
   if (searchTimeout) {
     clearTimeout(searchTimeout)
     searchTimeout = null
   }
-  void runSearch()
+  return runSearch(nextQuery)
 }
 
-export function debouncedSearch() {
+export function debouncedSearch(nextQuery?: string) {
   if (searchTimeout) clearTimeout(searchTimeout)
   searchTimeout = setTimeout(() => {
     searchTimeout = null
-    void runSearch()
+    void runSearch(nextQuery)
   }, SEARCH_DEBOUNCE_MS)
 }
 
@@ -139,6 +240,7 @@ export function clearSearch() {
   latestSearchRequestId += 1
   query.set('')
   results.set([])
+  sizeIndexed.set(false)
   totalCount.set(0)
   totalSize.set(0)
   statusText.set('Ready')
@@ -156,6 +258,10 @@ export function setSort(column: SortColumn) {
     sortDirection.set('asc')
   }
   search()
+}
+
+export function setTableColumnWidths(widths: number[]) {
+  tableColumnWidths.set([...widths])
 }
 
 export function selectRow(index: number) {
@@ -207,11 +313,15 @@ export async function copySelectedPath() {
 }
 
 export async function fetchStatus() {
+  if (get(isLoading)) return
+
   try {
     const previousStatus = get(daemonStatus)
     const status = await invoke<StatusResponse>('get_status')
     daemonStatus.set(status)
-    appendDiagnostics(`Status refreshed: ${status.status}`)
+    if (shouldRefreshActiveSearch(previousStatus, status) || !previousStatus) {
+      appendDiagnostics(`Status refreshed: ${status.status}`)
+    }
 
     if (get(query).trim() && shouldRefreshActiveSearch(previousStatus, status)) {
       search()
@@ -269,4 +379,13 @@ export function formatSize(bytes: number): string {
     unitIdx++
   }
   return `${value.toFixed(1)} ${units[unitIdx]}`
+}
+
+export function formatTimestamp(unix: number): string {
+  if (unix <= 0) return ''
+
+  const date = new Date(unix * 1000)
+  const pad = (value: number) => String(value).padStart(2, '0')
+
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }

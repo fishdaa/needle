@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { results, sortColumn, sortDirection, selectedIndex, hasResults, isLoading } from '$lib/searchStore'
-  import { setSort, selectRow, openSelected, revealSelected, copySelectedPath } from '$lib/searchStore'
+  import { results, sortColumn, sortDirection, selectedIndex, hasResults, isLoading, sizeIndexed, tableColumnWidths } from '$lib/searchStore'
+  import { setSort, selectRow, openSelected, revealSelected, copySelectedPath, formatSize, formatTimestamp, setTableColumnWidths } from '$lib/searchStore'
   import ContextMenu from './ContextMenu.svelte'
   import type { SortColumn } from '$lib/types'
-  import { onDestroy } from 'svelte'
+  import { onDestroy, onMount } from 'svelte'
 
   const columns: { key: SortColumn; label: string; width: number; min: number }[] = [
     { key: 'name', label: 'NAME', width: 220, min: 140 },
@@ -11,14 +11,25 @@
     { key: 'size', label: 'SIZE', width: 88, min: 72 },
     { key: 'modified', label: 'MODIFIED', width: 140, min: 110 }
   ]
+  const ROW_HEIGHT = 37
+  const OVERSCAN_ROWS = 8
 
   let contextMenu = $state({ visible: false, x: 0, y: 0 })
-  let columnWidths = $state(columns.map((col) => col.width))
+  let scrollEl: HTMLDivElement | undefined = $state(undefined)
+  let scrollTop = $state(0)
+  let viewportHeight = $state(0)
 
   let removeResizeListeners: (() => void) | null = null
+  let removeViewportListeners: (() => void) | null = null
+
+  function currentColumnWidths() {
+    return $tableColumnWidths.length === columns.length
+      ? $tableColumnWidths
+      : columns.map((col) => col.width)
+  }
 
   function columnTemplate() {
-    return columnWidths.map((width) => `${width}px`).join(' ')
+    return currentColumnWidths().map((width) => `${width}px`).join(' ')
   }
 
   function showContextMenu(event: MouseEvent, index: number) {
@@ -33,14 +44,15 @@
   }
 
   function startResize(index: number, event: PointerEvent) {
-    if (index >= columnWidths.length - 1) return
+    if (index >= columns.length - 1) return
 
     event.preventDefault()
     event.stopPropagation()
 
     const startX = event.clientX
-    const initialCurrent = columnWidths[index]
-    const initialNext = columnWidths[index + 1]
+    const widths = [...currentColumnWidths()]
+    const initialCurrent = widths[index]
+    const initialNext = widths[index + 1]
     const currentMin = columns[index].min
     const nextMin = columns[index + 1].min
 
@@ -51,9 +63,9 @@
       const nextWidth = Math.max(nextMin, initialNext - consumed)
       const actualCurrent = initialCurrent + (initialNext - nextWidth)
 
-      columnWidths[index] = actualCurrent
-      columnWidths[index + 1] = nextWidth
-      columnWidths = [...columnWidths]
+      widths[index] = actualCurrent
+      widths[index + 1] = nextWidth
+      setTableColumnWidths(widths)
     }
 
     const onUp = () => {
@@ -75,11 +87,53 @@
 
   onDestroy(() => {
     removeResizeListeners?.()
+    removeViewportListeners?.()
+  })
+
+  onMount(() => {
+    const updateViewportHeight = () => {
+      viewportHeight = scrollEl?.clientHeight ?? 0
+      scrollTop = scrollEl?.scrollTop ?? 0
+    }
+
+    updateViewportHeight()
+    window.addEventListener('resize', updateViewportHeight)
+    removeViewportListeners = () => {
+      window.removeEventListener('resize', updateViewportHeight)
+      removeViewportListeners = null
+    }
+
+    return () => {
+      removeViewportListeners?.()
+    }
+  })
+
+  const totalRows = $derived($results.length)
+  const visibleRowCount = $derived(Math.ceil(viewportHeight / ROW_HEIGHT) + OVERSCAN_ROWS * 2)
+  const startIndex = $derived(Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN_ROWS))
+  const endIndex = $derived(Math.min(totalRows, startIndex + visibleRowCount))
+  const topSpacerHeight = $derived(startIndex * ROW_HEIGHT)
+  const bottomSpacerHeight = $derived(Math.max(0, (totalRows - endIndex) * ROW_HEIGHT))
+  const visibleRows = $derived.by(() => {
+    const rows = $results.slice(startIndex, endIndex)
+    const sizesEnabled = $sizeIndexed
+
+    return rows.map((row) => ({
+      ...row,
+      sizeLabel: sizesEnabled ? formatSize(row.size_bytes) : '—',
+      modifiedLabel: formatTimestamp(row.modified_unix)
+    }))
   })
 </script>
 
 <div class="result-table" style={`--table-columns: ${columnTemplate()};`}>
-  <div class="table-scroll">
+  <div
+    class="table-scroll"
+    bind:this={scrollEl}
+    onscroll={() => {
+      scrollTop = scrollEl?.scrollTop ?? 0
+    }}
+  >
     <div class="table-header">
       {#each columns as col, index}
       <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -110,7 +164,12 @@
     </div>
 
     <div class="table-body">
-      {#each $results as row, index}
+      {#if topSpacerHeight > 0}
+        <div class="row-spacer" style={`height: ${topSpacerHeight}px;`}></div>
+      {/if}
+
+      {#each visibleRows as row, offset (row.path)}
+        {@const index = startIndex + offset}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
@@ -128,14 +187,14 @@
           <div class="cell cell-path">
             {row.parent}
           </div>
-          <div class="cell cell-meta">
-            {row.size}
-          </div>
-          <div class="cell cell-meta">
-            {row.modified}
-          </div>
+          <div class="cell cell-meta">{row.sizeLabel}</div>
+          <div class="cell cell-meta">{row.modifiedLabel}</div>
         </div>
       {/each}
+
+      {#if bottomSpacerHeight > 0}
+        <div class="row-spacer" style={`height: ${bottomSpacerHeight}px;`}></div>
+      {/if}
 
       {#if !$hasResults && !$isLoading}
         <div class="empty-state">
@@ -169,6 +228,7 @@
   .table-scroll {
     flex: 1;
     overflow: auto;
+    scrollbar-gutter: stable;
   }
 
   .table-header {
@@ -256,11 +316,16 @@
     grid-template-columns: var(--table-columns);
     gap: 16px;
     padding: 9px 16px;
+    min-height: 37px;
     cursor: pointer;
     border-bottom: 1px solid var(--border-subtle);
     align-items: center;
     color: var(--text-primary);
     transition: background 120ms ease, color 120ms ease;
+  }
+
+  .row-spacer {
+    width: 100%;
   }
 
   .table-row.even {

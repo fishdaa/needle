@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/svelte'
 import StatusBar from '@/components/StatusBar.svelte'
 import { invoke } from '@tauri-apps/api/core'
+import { results, selectedIndex, totalCount, sizeIndexed } from '$lib/searchStore'
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn()
@@ -10,6 +11,10 @@ vi.mock('@tauri-apps/api/core', () => ({
 describe('StatusBar', () => {
   beforeEach(() => {
     vi.resetModules()
+    results.set([])
+    selectedIndex.set(-1)
+    totalCount.set(0)
+    sizeIndexed.set(false)
     vi.mocked(invoke).mockResolvedValue({
       status: 'Ready',
       status_message: 'Indexed 123 entries',
@@ -33,5 +38,22 @@ describe('StatusBar', () => {
   it('shows the index status text', async () => {
     render(StatusBar)
     expect(await screen.findByText(/Ready \| Indexed 123 entries \| 123 indexed/)).toBeTruthy()
+  })
+
+  it('shows selected row details instead of generic status text', async () => {
+    sizeIndexed.set(true)
+    totalCount.set(24)
+    selectedIndex.set(3)
+    results.set([
+      { path: '/tmp/a.txt', name: 'a.txt', parent: '/tmp', extension: 'txt', is_dir: false, size_bytes: 1, modified_unix: 0 },
+      { path: '/tmp/b.txt', name: 'b.txt', parent: '/tmp', extension: 'txt', is_dir: false, size_bytes: 2, modified_unix: 0 },
+      { path: '/tmp/c.txt', name: 'c.txt', parent: '/tmp', extension: 'txt', is_dir: false, size_bytes: 3, modified_unix: 0 },
+      { path: '/tmp/notepad.exe', name: 'notepad.exe', parent: '/tmp', extension: 'exe', is_dir: false, size_bytes: 210 * 1024, modified_unix: 1444510800 }
+    ])
+
+    render(StatusBar)
+
+    expect(await screen.findByText(/Size: 210.0 KB, Date Modified:/)).toBeTruthy()
+    expect(screen.getByText('4 of 24')).toBeTruthy()
   })
 })

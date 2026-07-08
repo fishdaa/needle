@@ -4,8 +4,8 @@ export interface ResultRow {
   parent: string
   extension: string
   is_dir: boolean
-  size: string
-  modified: string
+  size_bytes: number
+  modified_unix: number
 }
 
 export interface SearchResult {

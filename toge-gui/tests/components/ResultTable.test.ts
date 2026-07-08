@@ -33,8 +33,8 @@ describe('ResultTable', () => {
         parent: '/tmp',
         extension: 'mkv',
         is_dir: false,
-        size: '0 B',
-        modified: '2026-07-07'
+        size_bytes: 0,
+        modified_unix: 1751846400
       }
     ])
 

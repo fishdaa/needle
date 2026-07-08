@@ -3,20 +3,25 @@
   import { query } from '$lib/searchStore'
   import { clearSearch, search, debouncedSearch, selectNext, selectPrevious, openDiagnosticsWindow } from '$lib/searchStore'
 
+  const menuItems = ['File', 'Edit', 'View', 'Search', 'Bookmarks', 'Tools', 'Help']
+
   let inputEl: HTMLInputElement | undefined = $state(undefined)
+  let queryText = $state('')
 
   onMount(() => {
+    queryText = $query
     inputEl?.focus()
   })
 
   function handleInput() {
-    debouncedSearch()
+    debouncedSearch(queryText)
   }
 
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === 'Enter') {
-      search()
+      search(queryText)
     } else if (e.key === 'Escape') {
+      queryText = ''
       clearSearch()
     } else if (e.key === 'ArrowDown') {
       e.preventDefault()
@@ -28,50 +33,100 @@
   }
 </script>
 
-<div class="search-bar">
-  <div class="search-icon" aria-hidden="true">⌕</div>
-  <input
-    bind:this={inputEl}
-    type="text"
-    placeholder="Search files..."
-    class="search-input"
-    bind:value={$query}
-    oninput={handleInput}
-    onkeydown={handleKeydown}
-  />
-  {#if $query}
-    <button class="clear-btn" onclick={() => clearSearch()}>
+<div class="search-chrome">
+  <div class="menu-bar" role="menubar" aria-label="Application menu">
+    {#each menuItems as item}
+      <button class="menu-item" type="button">{item}</button>
+    {/each}
+  </div>
+
+  <div class="search-bar">
+    <div class="search-icon" aria-hidden="true">⌕</div>
+    <input
+      bind:this={inputEl}
+      type="text"
+      placeholder="Search files..."
+      class="search-input"
+      bind:value={queryText}
+      oninput={handleInput}
+      onkeydown={handleKeydown}
+    />
+    <button
+      class="clear-btn"
+      class:visible={queryText.length > 0}
+      type="button"
+      aria-label="Clear search"
+      aria-hidden={queryText.length === 0}
+      tabindex={queryText.length > 0 ? 0 : -1}
+      disabled={queryText.length === 0}
+      onclick={() => {
+        queryText = ''
+        clearSearch()
+      }}
+    >
       ✕
     </button>
-  {/if}
-  <button class="diagnostics-btn" onclick={() => openDiagnosticsWindow()}>
-    ⋯
-  </button>
+    <button class="diagnostics-btn" type="button" aria-label="Open diagnostics" onclick={() => openDiagnosticsWindow()}>
+      ⋯
+    </button>
+  </div>
 </div>
 
 <style>
+  .search-chrome {
+    display: flex;
+    flex-direction: column;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg-surface) 94%, var(--bg));
+  }
+
+  .menu-bar {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border);
+    min-height: 28px;
+  }
+
+  .menu-item {
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 12px;
+    padding: 3px 8px;
+    border-radius: 2px;
+    cursor: default;
+  }
+
+  .menu-item:hover {
+    background: var(--bg-hover);
+  }
+
   .search-bar {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 12px 14px;
-    border-bottom: 1px solid var(--border);
+    padding: 6px 8px;
     background: linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 88%, var(--bg)) 0%, var(--bg-surface) 100%);
   }
 
   .search-icon {
     color: var(--accent);
-    font-size: 15px;
+    font-size: 13px;
     opacity: 0.95;
   }
 
   .search-input {
     flex: 1;
-    background: transparent;
-    border: none;
+    background: var(--bg);
+    border: 1px solid var(--border);
     outline: none;
-    font-size: 15px;
+    font-size: 13px;
     color: var(--text-primary);
+    min-height: 26px;
+    padding: 0 8px;
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--bg) 84%, #fff);
   }
 
   .search-input::placeholder {
@@ -80,6 +135,7 @@
 
   .search-input:focus {
     color: var(--text-primary);
+    border-color: var(--border-focus);
   }
 
   .clear-btn,
@@ -88,17 +144,31 @@
     border: none;
     color: var(--text-secondary);
     cursor: pointer;
-    width: 28px;
-    height: 28px;
-    border-radius: var(--radius-sm);
+    width: 24px;
+    height: 24px;
+    border-radius: 2px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    flex: 0 0 24px;
   }
 
   .clear-btn:hover,
   .diagnostics-btn:hover {
     background: var(--bg-hover);
     color: var(--text-primary);
+  }
+
+  .clear-btn {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 120ms ease;
+  }
+
+  .clear-btn.visible {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
   }
 </style>
