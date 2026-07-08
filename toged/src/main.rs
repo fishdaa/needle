@@ -838,6 +838,9 @@ fn start_watcher(
                                     continue;
                                 }
                                 append_watcher_log(&mut st, format!("delete {}", path));
+                                if Path::new(path).is_dir() {
+                                    let _ = watcher.unwatch(&PathBuf::from(path));
+                                }
                                 st.index.remove(path);
                             }
                             WatchEvent::Modify { path } => {
@@ -854,8 +857,19 @@ fn start_watcher(
                                     continue;
                                 }
                                 append_watcher_log(&mut st, format!("move {} -> {}", from, to));
+                                let _ = watcher.unwatch(&PathBuf::from(from));
                                 st.index.remove(from);
                                 let is_dir = std::path::Path::new(to).is_dir();
+                                if is_dir {
+                                    match watcher.watch(&PathBuf::from(to)) {
+                                        Ok(()) => {
+                                            st.watcher.watched_dir_count += 1;
+                                        }
+                                        Err(_) => {
+                                            st.watcher.watch_failure_count += 1;
+                                        }
+                                    }
+                                }
                                 let (size, modified, created, accessed) = metadata_snapshot(to);
                                 st.index.insert_with_metadata(
                                     to,
@@ -884,6 +898,13 @@ fn start_watcher(
                 }
 
                 if needs_reindex {
+                    let old_dirs = {
+                        let st = state.lock().unwrap();
+                        watched_dirs(&st.index)
+                    };
+                    for dir in &old_dirs {
+                        let _ = watcher.unwatch(dir);
+                    }
                     let _ = fs::remove_file(state_dir.join("index.bin"));
                     let (new_index, duration) = build_index(&state_dir, &config, &state);
                     let _ = save_index(&new_index, &state_dir);
