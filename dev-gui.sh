@@ -25,6 +25,7 @@ trap cleanup EXIT INT TERM
 echo "Building daemon for this dev session..."
 cd "$SCRIPT_DIR"
 cargo build -p toged
+sudo setcap cap_sys_admin,cap_dac_read_search+ep "$SCRIPT_DIR/target/debug/toged"
 
 DEV_RUNTIME_DIR="$(mktemp -d /tmp/toge-gui-dev.XXXXXX)"
 export TOGE_SOCKET="$DEV_RUNTIME_DIR/toged.sock"

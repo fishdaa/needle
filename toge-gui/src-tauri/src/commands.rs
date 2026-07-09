@@ -6,7 +6,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 use tauri::{Manager, State, WebviewUrl, WebviewWindowBuilder};
-use toge_core::sys::{FsWatcher, InotifyWatcher, WatchEvent};
+use toge_core::sys::{FanotifyWatcher, FsWatcher, WatchEvent};
 
 #[derive(serde::Serialize)]
 pub struct SearchResult {
@@ -157,7 +157,7 @@ pub fn run_watcher_self_test() -> Result<WatcherSelfTestResult, String> {
 
     #[cfg(target_os = "linux")]
     {
-        let mut watcher = InotifyWatcher::new().map_err(|e| format!("watcher init failed: {}", e))?;
+        let mut watcher = FanotifyWatcher::new().map_err(|e| format!("watcher init failed: {}", e))?;
 
         let test_dir = make_watcher_test_dir().map_err(|e| format!("temp dir failed: {}", e))?;
         let test_file = test_dir.join("watcher-self-test.mkv");
@@ -235,7 +235,7 @@ fn make_watcher_test_dir() -> std::io::Result<PathBuf> {
 
 #[cfg(target_os = "linux")]
 fn wait_for_events(
-    watcher: &mut InotifyWatcher,
+    watcher: &mut FanotifyWatcher,
     timeout: Duration,
 ) -> std::io::Result<Vec<WatchEvent>> {
     let deadline = std::time::Instant::now() + timeout;

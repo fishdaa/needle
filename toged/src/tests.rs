@@ -1,6 +1,6 @@
 use crate::{
     apply_highlight_ranges, canonical_starts_with, ensure_private_dir, handle_request,
-    highlight_path, is_own_path, term_needles, DaemonState, WatcherStatus,
+    highlight_path, is_ignored_path, is_own_path, term_needles, DaemonState, WatcherStatus,
 };
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -11,6 +11,13 @@ use toge_core::config::Config;
 use toge_core::index::Index;
 use toge_core::ipc::{DaemonStatus, OutputFormat, QueryRequest, Request, Response};
 use toge_core::query::{Query, SearchMode, Sort, TextTerm};
+
+fn visible_tempdir() -> tempfile::TempDir {
+    tempfile::Builder::new()
+        .prefix("toged-test-")
+        .tempdir_in(std::env::temp_dir())
+        .unwrap()
+}
 
 /// Helper to build and run the daemon binary with given args.
 fn run_needled(args: &[&str]) -> std::process::Output {
@@ -206,5 +213,43 @@ fn canonical_starts_with_returns_false_when_root_is_missing() {
     assert!(!canonical_starts_with(
         &path,
         &dir.path().join("missing-root")
+    ));
+}
+
+#[test]
+fn is_ignored_path_matches_hidden_directory_contents() {
+    let dir = visible_tempdir();
+    let state = dir.path().join("state");
+    let config = dir.path().join("config");
+    let hidden = dir.path().join(".hidden");
+    fs::create_dir_all(&state).unwrap();
+    fs::create_dir_all(&config).unwrap();
+    fs::create_dir_all(&hidden).unwrap();
+    let hidden_file = hidden.join("episode.mkv");
+    fs::write(&hidden_file, "x").unwrap();
+
+    assert!(is_ignored_path(
+        hidden_file.to_str().unwrap(),
+        &state,
+        &config,
+        false
+    ));
+}
+
+#[test]
+fn is_ignored_path_keeps_hidden_files_outside_hidden_dirs() {
+    let dir = visible_tempdir();
+    let state = dir.path().join("state");
+    let config = dir.path().join("config");
+    fs::create_dir_all(&state).unwrap();
+    fs::create_dir_all(&config).unwrap();
+    let dotfile = dir.path().join(".episode.mkv");
+    fs::write(&dotfile, "x").unwrap();
+
+    assert!(!is_ignored_path(
+        dotfile.to_str().unwrap(),
+        &state,
+        &config,
+        false
     ));
 }

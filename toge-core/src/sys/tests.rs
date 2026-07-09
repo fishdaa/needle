@@ -1,14 +1,12 @@
 use super::*;
 #[cfg(target_os = "linux")]
-use notify::event::{EventAttributes, ModifyKind, RenameMode};
-#[cfg(target_os = "linux")]
-use notify::{Event, EventKind};
+use crate::sys::FanotifyWatcher;
 use std::fs;
 use std::path::Path;
 #[cfg(target_os = "linux")]
 use std::time::{Duration, Instant};
 
-/// A fake watcher for testing higher-level code without touching inotify.
+/// A fake watcher for testing higher-level code without touching fanotify.
 pub struct FakeWatcher {
     pub watches: Vec<String>,
     pub pending: Vec<WatchEvent>,
@@ -62,109 +60,6 @@ fn fake_watcher_returns_pending_events() {
     let events = w.poll_events().unwrap();
     assert_eq!(events.len(), 1);
     assert!(w.poll_events().unwrap().is_empty());
-}
-
-#[test]
-#[cfg(target_os = "linux")]
-fn inotify_watcher_can_be_constructed() {
-    // May fail inside restricted containers; allow it.
-    let _ = InotifyWatcher::new();
-}
-
-#[test]
-#[cfg(target_os = "linux")]
-fn inotify_watcher_trait_object() {
-    fn takes_watcher(_: &mut dyn FsWatcher) {}
-    if let Ok(mut w) = InotifyWatcher::new() {
-        takes_watcher(&mut w);
-    }
-}
-
-#[test]
-#[cfg(target_os = "linux")]
-fn notify_maps_rename_from_to_delete() {
-    let events = InotifyWatcher::map_event(Event {
-        kind: EventKind::Modify(ModifyKind::Name(RenameMode::From)),
-        paths: vec!["/tmp/movie.mkv".into()],
-        attrs: EventAttributes::new(),
-    });
-
-    assert_eq!(
-        events,
-        vec![WatchEvent::Delete {
-            path: "/tmp/movie.mkv".into()
-        }]
-    );
-}
-
-#[test]
-#[cfg(target_os = "linux")]
-fn notify_maps_rename_both_to_move() {
-    let events = InotifyWatcher::map_event(Event {
-        kind: EventKind::Modify(ModifyKind::Name(RenameMode::Both)),
-        paths: vec!["/tmp/movie.part".into(), "/tmp/movie.mkv".into()],
-        attrs: EventAttributes::new(),
-    });
-
-    assert_eq!(
-        events,
-        vec![WatchEvent::Move {
-            from: "/tmp/movie.part".into(),
-            to: "/tmp/movie.mkv".into()
-        }]
-    );
-}
-
-#[test]
-#[cfg(target_os = "linux")]
-fn inotify_watcher_observes_real_create_and_delete_events() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("live-watch.mkv");
-
-    let Ok(mut watcher) = InotifyWatcher::new() else {
-        return;
-    };
-    watcher.watch(dir.path()).expect("watch temp dir");
-
-    fs::write(&path, b"hello").unwrap();
-
-    let deadline = Instant::now() + Duration::from_secs(2);
-    let mut saw_create = false;
-    while Instant::now() < deadline {
-        let events = watcher.poll_events().unwrap();
-        if events.iter().any(|event| {
-            matches!(
-                event,
-                WatchEvent::Create { path: event_path, is_dir: false }
-                    if event_path == path.to_string_lossy().as_ref()
-            )
-        }) {
-            saw_create = true;
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(25));
-    }
-    assert!(saw_create, "expected create event for {}", path.display());
-
-    fs::remove_file(&path).unwrap();
-
-    let deadline = Instant::now() + Duration::from_secs(2);
-    let mut saw_delete = false;
-    while Instant::now() < deadline {
-        let events = watcher.poll_events().unwrap();
-        if events.iter().any(|event| {
-            matches!(
-                event,
-                WatchEvent::Delete { path: event_path }
-                    if event_path == path.to_string_lossy().as_ref()
-            )
-        }) {
-            saw_delete = true;
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(25));
-    }
-    assert!(saw_delete, "expected delete event for {}", path.display());
 }
 
 #[test]
@@ -366,4 +261,281 @@ fn simulate_file_create_does_not_add_watch() {
 
     assert_eq!(watcher.watches.len(), 1);
     assert_eq!(watched.len(), 1);
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn fanotify_watcher_can_be_constructed() {
+    let _ = FanotifyWatcher::new();
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn fanotify_watcher_trait_object() {
+    fn takes_watcher(_: &mut dyn FsWatcher) {}
+    if let Ok(mut w) = FanotifyWatcher::new() {
+        takes_watcher(&mut w);
+    }
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn fanotify_watcher_observes_create_and_delete() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("fanotify-test.mkv");
+
+    let Ok(mut watcher) = FanotifyWatcher::new() else {
+        return;
+    };
+    if watcher.watch(dir.path()).is_err() {
+        return;
+    }
+
+    fs::write(&path, b"hello").unwrap();
+
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let mut saw_create = false;
+    while Instant::now() < deadline {
+        let events = watcher.poll_events().unwrap();
+        if events.iter().any(|event| {
+            matches!(
+                event,
+                WatchEvent::Create { path: ep, is_dir: false }
+                    if ep == path.to_string_lossy().as_ref()
+            )
+        }) {
+            saw_create = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert!(saw_create, "expected create event for {}", path.display());
+
+    fs::remove_file(&path).unwrap();
+
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let mut saw_delete = false;
+    while Instant::now() < deadline {
+        let events = watcher.poll_events().unwrap();
+        if events.iter().any(|event| {
+            matches!(
+                event,
+                WatchEvent::Delete { path: ep }
+                    if ep == path.to_string_lossy().as_ref()
+            )
+        }) {
+            saw_delete = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert!(saw_delete, "expected delete event for {}", path.display());
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn fanotify_watcher_observes_modify() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("fanotify-modify.mkv");
+    fs::write(&path, b"initial").unwrap();
+
+    let Ok(mut watcher) = FanotifyWatcher::new() else {
+        return;
+    };
+    if watcher.watch(dir.path()).is_err() {
+        return;
+    }
+
+    // Drain any create events from the initial write above.
+    drain_events(&mut watcher, Duration::from_millis(200));
+
+    fs::write(&path, b"updated content").unwrap();
+
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let mut saw_modify = false;
+    while Instant::now() < deadline {
+        let events = watcher.poll_events().unwrap();
+        if events.iter().any(|event| {
+            matches!(
+                event,
+                WatchEvent::Modify { path: ep }
+                    if ep == path.to_string_lossy().as_ref()
+            )
+        }) {
+            saw_modify = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert!(saw_modify, "expected modify event for {}", path.display());
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn fanotify_watcher_observes_directory_create() {
+    let dir = tempfile::tempdir().unwrap();
+    let new_dir = dir.path().join("new_subdir");
+
+    let Ok(mut watcher) = FanotifyWatcher::new() else {
+        return;
+    };
+    if watcher.watch(dir.path()).is_err() {
+        return;
+    }
+
+    fs::create_dir(&new_dir).unwrap();
+
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let mut saw_dir_create = false;
+    while Instant::now() < deadline {
+        let events = watcher.poll_events().unwrap();
+        if events.iter().any(|event| {
+            matches!(
+                event,
+                WatchEvent::Create { path: ep, is_dir: true }
+                    if ep == new_dir.to_string_lossy().as_ref()
+            )
+        }) {
+            saw_dir_create = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert!(
+        saw_dir_create,
+        "expected directory create event for {}",
+        new_dir.display()
+    );
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn fanotify_watcher_rename_produces_delete_and_create() {
+    let dir = tempfile::tempdir().unwrap();
+    let old_path = dir.path().join("old.mkv");
+    let new_path = dir.path().join("new.mkv");
+    fs::write(&old_path, b"content").unwrap();
+
+    let Ok(mut watcher) = FanotifyWatcher::new() else {
+        return;
+    };
+    if watcher.watch(dir.path()).is_err() {
+        return;
+    }
+
+    // Drain initial create events.
+    drain_events(&mut watcher, Duration::from_millis(200));
+
+    fs::rename(&old_path, &new_path).unwrap();
+
+    let old_str = old_path.to_string_lossy().to_string();
+    let new_str = new_path.to_string_lossy().to_string();
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let mut saw_delete = false;
+    let mut saw_create = false;
+    while Instant::now() < deadline {
+        let events = watcher.poll_events().unwrap();
+        for event in &events {
+            match event {
+                WatchEvent::Delete { path } if path == &old_str => saw_delete = true,
+                WatchEvent::Create { path, is_dir: false } if path == &new_str => saw_create = true,
+                _ => {}
+            }
+        }
+        if saw_delete && saw_create {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert!(saw_delete, "expected delete event for renamed-from {}", old_str);
+    assert!(saw_create, "expected create event for renamed-to {}", new_str);
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn fanotify_watcher_fs_dedup_does_not_double_mark() {
+    let dir = tempfile::tempdir().unwrap();
+    let sibling = dir.path().join("sibling.mkv");
+
+    let Ok(mut watcher) = FanotifyWatcher::new() else {
+        return;
+    };
+    if watcher.watch(dir.path()).is_err() {
+        return;
+    }
+
+    let mounts_after_first = watcher.fs_count();
+    assert_eq!(mounts_after_first, 1, "first watch should mark one mount");
+
+    // Watching a second path on the same mount must not add another mark.
+    watcher.watch(dir.path()).expect("re-watch same path");
+    assert_eq!(
+        watcher.fs_count(),
+        mounts_after_first,
+        "re-watching the same mount must not duplicate the mark"
+    );
+
+    // Creating a sibling file still produces events — proving the single
+    // mount mark covers the whole tree.
+    fs::write(&sibling, b"dedup").unwrap();
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let mut saw = false;
+    while Instant::now() < deadline {
+        let events = watcher.poll_events().unwrap();
+        if events.iter().any(|event| {
+            matches!(
+                event,
+                WatchEvent::Create { path: ep, is_dir: false }
+                    if ep == sibling.to_string_lossy().as_ref()
+            )
+        }) {
+            saw = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert!(saw, "expected create event for {}", sibling.display());
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn fanotify_watcher_poll_returns_empty_when_idle() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let Ok(mut watcher) = FanotifyWatcher::new() else {
+        return;
+    };
+    if watcher.watch(dir.path()).is_err() {
+        return;
+    }
+
+    // No filesystem activity — non-blocking poll must return an empty vec.
+    let events = watcher.poll_events().unwrap();
+    assert!(events.is_empty(), "idle poll should return no events");
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn fanotify_watcher_unwatch_is_noop() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let Ok(mut watcher) = FanotifyWatcher::new() else {
+        return;
+    };
+    if watcher.watch(dir.path()).is_err() {
+        return;
+    }
+    // fanotify mount marks are not removed per-path; unwatch must not error.
+    watcher.unwatch(dir.path()).expect("unwatch should not error");
+}
+
+#[cfg(target_os = "linux")]
+fn drain_events(watcher: &mut FanotifyWatcher, timeout: Duration) {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        let events = watcher.poll_events().unwrap();
+        if events.is_empty() {
+            std::thread::sleep(Duration::from_millis(25));
+        }
+    }
 }

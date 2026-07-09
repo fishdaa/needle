@@ -21,8 +21,8 @@ use toge_core::matcher::match_query;
 use toge_core::query::Query;
 use toge_core::sort::{sort_ids, SortKey};
 use toge_core::sys::FsWatcher;
-use toge_core::sys::{InotifyWatcher, WatchEvent};
-use toge_core::walker::{walk, Excludes};
+use toge_core::sys::{FanotifyWatcher, WatchEvent};
+use toge_core::walker::{has_hidden_ancestor_dir, walk, Excludes};
 
 struct DaemonState {
     index: Index,
@@ -188,6 +188,7 @@ fn build_index(state_dir: &Path, config: &Config, state: &Arc<Mutex<DaemonState>
         skip_system_paths: true,
         patterns: config.exclude_patterns.clone(),
         folders: config.exclude_folders.clone(),
+        paths: Vec::new(),
         include_only: config.include_only.clone(),
     };
 
@@ -232,6 +233,21 @@ fn current_unix_time() -> i64 {
         .as_secs() as i64
 }
 
+fn is_ignored_path(path: &str, state_dir: &Path, config_dir: &Path, is_dir: bool) -> bool {
+    let path = Path::new(path);
+    canonical_starts_with(path, state_dir)
+        || canonical_starts_with(path, config_dir)
+        || has_hidden_ancestor_dir(path)
+        || (is_dir
+            && path
+                .file_name()
+                .map(|name| {
+                    let bytes = name.as_encoded_bytes();
+                    bytes.len() > 1 && bytes.starts_with(b".")
+                })
+                .unwrap_or(false))
+}
+
 fn metadata_snapshot(path: &str) -> (u64, i64, i64, i64) {
     let now = current_unix_time();
     let Ok(metadata) = fs::metadata(path) else {
@@ -269,27 +285,7 @@ fn status_response(st: &DaemonState) -> StatusResponse {
     }
 }
 
-fn watched_dirs(index: &Index) -> Vec<PathBuf> {
-    let mut dirs: Vec<PathBuf> = index
-        .entries
-        .iter()
-        .map(|e| {
-            let parent_end = e.name_off as usize;
-            if parent_end > 0 {
-                PathBuf::from(&e.path[..parent_end.saturating_sub(1)])
-            } else {
-                PathBuf::from("/")
-            }
-        })
-        .collect();
-    dirs.sort();
-    dirs.dedup();
-    dirs
-}
-
-fn install_watches(watcher: &mut InotifyWatcher, dirs: &[PathBuf]) -> WatcherStatus {
-    eprintln!("Starting inotify watcher on {} directories...", dirs.len());
-
+fn install_watches(watcher: &mut FanotifyWatcher, dirs: &[PathBuf]) -> WatcherStatus {
     let mut watcher_status = WatcherStatus {
         watched_dir_count: 0,
         watch_failure_count: 0,
@@ -298,7 +294,7 @@ fn install_watches(watcher: &mut InotifyWatcher, dirs: &[PathBuf]) -> WatcherSta
 
     for dir in dirs {
         match watcher.watch(dir) {
-            Ok(()) => watcher_status.watched_dir_count += 1,
+            Ok(()) => {}
             Err(e)
                 if e.kind() == io::ErrorKind::PermissionDenied
                     || e.kind() == io::ErrorKind::NotFound
@@ -313,6 +309,7 @@ fn install_watches(watcher: &mut InotifyWatcher, dirs: &[PathBuf]) -> WatcherSta
         }
     }
 
+    watcher_status.watched_dir_count = watcher.fs_count();
     watcher_status.is_healthy = watcher_status.watch_failure_count == 0;
     watcher_status
 }
@@ -731,7 +728,7 @@ fn start_watcher(
     config: Config,
 ) {
     thread::Builder::new()
-        .name("inotify-watcher".into())
+        .name("fanotify-watcher".into())
         .spawn(move || {
             loop {
                 {
@@ -743,18 +740,15 @@ fn start_watcher(
                 thread::sleep(std::time::Duration::from_millis(100));
             }
 
-            let mut watcher = match InotifyWatcher::new() {
+            let mut watcher = match FanotifyWatcher::new() {
                 Ok(w) => w,
                 Err(e) => {
-                    eprintln!("Failed to create inotify watcher: {}", e);
+                    eprintln!("Failed to create fanotify watcher: {}", e);
                     return;
                 }
             };
 
-            let dirs = {
-                let st = state.lock().unwrap();
-                watched_dirs(&st.index)
-            };
+            let dirs = discover_roots(&config);
 
             let watcher_status = install_watches(&mut watcher, &dirs);
             {
@@ -770,7 +764,7 @@ fn start_watcher(
                             thread::sleep(std::time::Duration::from_millis(100));
                             continue;
                         }
-                        eprintln!("inotify poll error: {}", e);
+                        eprintln!("fanotify poll error: {}", e);
                         thread::sleep(std::time::Duration::from_secs(1));
                         continue;
                     }
@@ -787,37 +781,8 @@ fn start_watcher(
                     for event in events {
                         match &event {
                             WatchEvent::Create { path, is_dir } => {
-                                if is_own_path(path, &state_dir, &config_dir) {
+                                if is_ignored_path(path, &state_dir, &config_dir, *is_dir) {
                                     continue;
-                                }
-                                if *is_dir {
-                                    match watcher.watch(&PathBuf::from(path)) {
-                                        Ok(()) => {
-                                            st.watcher.watched_dir_count += 1;
-                                            append_watcher_log(&mut st, format!("watch dir {}", path));
-                                        }
-                                        Err(e)
-                                            if e.kind() == io::ErrorKind::PermissionDenied
-                                                || e.kind() == io::ErrorKind::NotFound
-                                                || e.raw_os_error() == Some(28) =>
-                                        {
-                                            st.watcher.watch_failure_count += 1;
-                                            st.watcher.is_healthy = false;
-                                            append_watcher_log(
-                                                &mut st,
-                                                format!("watch failed {}: {}", path, e),
-                                            );
-                                        }
-                                        Err(e) => {
-                                            st.watcher.watch_failure_count += 1;
-                                            st.watcher.is_healthy = false;
-                                            eprintln!("Failed to watch {}: {}", path, e);
-                                            append_watcher_log(
-                                                &mut st,
-                                                format!("watch failed {}: {}", path, e),
-                                            );
-                                        }
-                                    }
                                 }
                                 append_watcher_log(
                                     &mut st,
@@ -834,61 +799,55 @@ fn start_watcher(
                                 );
                             }
                             WatchEvent::Delete { path } => {
-                                if is_own_path(path, &state_dir, &config_dir) {
+                                if is_ignored_path(path, &state_dir, &config_dir, false) {
                                     continue;
                                 }
                                 append_watcher_log(&mut st, format!("delete {}", path));
-                                if Path::new(path).is_dir() {
-                                    let _ = watcher.unwatch(&PathBuf::from(path));
-                                }
                                 st.index.remove(path);
                             }
                             WatchEvent::Modify { path } => {
-                                if is_own_path(path, &state_dir, &config_dir) {
+                                if is_ignored_path(path, &state_dir, &config_dir, false) {
                                     continue;
                                 }
                                 append_watcher_log(&mut st, format!("modify {}", path));
                                 st.index.update_metadata(path);
                             }
                             WatchEvent::Move { from, to } => {
-                                if is_own_path(to, &state_dir, &config_dir)
-                                    || is_own_path(from, &state_dir, &config_dir)
-                                {
-                                    continue;
-                                }
+                                let from_ignored =
+                                    is_ignored_path(from, &state_dir, &config_dir, false);
+                                let to_ignored =
+                                    is_ignored_path(
+                                        to,
+                                        &state_dir,
+                                        &config_dir,
+                                        std::path::Path::new(to).is_dir(),
+                                    );
                                 append_watcher_log(&mut st, format!("move {} -> {}", from, to));
-                                let _ = watcher.unwatch(&PathBuf::from(from));
-                                st.index.remove(from);
-                                let is_dir = std::path::Path::new(to).is_dir();
-                                if is_dir {
-                                    match watcher.watch(&PathBuf::from(to)) {
-                                        Ok(()) => {
-                                            st.watcher.watched_dir_count += 1;
-                                        }
-                                        Err(_) => {
-                                            st.watcher.watch_failure_count += 1;
-                                        }
-                                    }
+                                if !from_ignored {
+                                    st.index.remove(from);
                                 }
-                                let (size, modified, created, accessed) = metadata_snapshot(to);
-                                st.index.insert_with_metadata(
-                                    to,
-                                    is_dir,
-                                    size,
-                                    modified,
-                                    created,
-                                    accessed,
-                                );
+                                if !to_ignored {
+                                    let is_dir = std::path::Path::new(to).is_dir();
+                                    let (size, modified, created, accessed) = metadata_snapshot(to);
+                                    st.index.insert_with_metadata(
+                                        to,
+                                        is_dir,
+                                        size,
+                                        modified,
+                                        created,
+                                        accessed,
+                                    );
+                                }
                             }
                             WatchEvent::Overflow { .. } => {
                                 eprintln!(
-                                    "inotify queue overflow — some events may have been lost"
+                                    "fanotify queue overflow — some events may have been lost"
                                 );
                                 st.watcher.watch_overflow_count += 1;
                                 st.watcher.is_healthy = false;
                                 append_watcher_log(
                                     &mut st,
-                                    "overflow: inotify queue overflow — some events may have been lost",
+                                    "overflow: fanotify queue overflow — some events may have been lost",
                                 );
                                 needs_reindex = true;
                             }
@@ -898,17 +857,10 @@ fn start_watcher(
                 }
 
                 if needs_reindex {
-                    let old_dirs = {
-                        let st = state.lock().unwrap();
-                        watched_dirs(&st.index)
-                    };
-                    for dir in &old_dirs {
-                        let _ = watcher.unwatch(dir);
-                    }
                     let _ = fs::remove_file(state_dir.join("index.bin"));
                     let (new_index, duration) = build_index(&state_dir, &config, &state);
                     let _ = save_index(&new_index, &state_dir);
-                    let dirs = watched_dirs(&new_index);
+                    let dirs = discover_roots(&config);
                     let watcher_status = install_watches(&mut watcher, &dirs);
                     {
                         let mut st = state.lock().unwrap();
@@ -925,9 +877,9 @@ fn start_watcher(
         .ok();
 }
 
+#[cfg(test)]
 fn is_own_path(path: &str, state_dir: &Path, config_dir: &Path) -> bool {
-    let path = Path::new(path);
-    canonical_starts_with(path, state_dir) || canonical_starts_with(path, config_dir)
+    is_ignored_path(path, state_dir, config_dir, false)
 }
 
 fn canonical_starts_with(path: &Path, root: &Path) -> bool {
