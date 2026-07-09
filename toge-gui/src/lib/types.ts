@@ -42,3 +42,25 @@ export interface WatcherSelfTestResult {
 
 export type SortColumn = 'name' | 'path' | 'size' | 'modified'
 export type SortDirection = 'asc' | 'desc'
+
+export type KeyboardScope = 'global' | 'search_edit' | 'result_list'
+
+export interface KeyboardShortcut {
+  command_id: string
+  scope: KeyboardScope
+  accelerator: string
+}
+
+export interface KeyboardSettings {
+  new_window_hotkey: string
+  show_window_hotkey: string
+  toggle_window_hotkey: string
+  command_shortcuts: KeyboardShortcut[]
+}
+
+export interface KeyboardCommand {
+  id: string
+  group: string
+  label: string
+  scopes: KeyboardScope[]
+}

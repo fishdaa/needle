@@ -1,53 +1,62 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { state as searchState, clearSearch, search, debouncedSearch, selectNext, selectPrevious, openDiagnosticsWindow, openSelected, copySelectedPath, trashSelected, deleteSelected } from '$lib/searchStore'
+  import { state as searchState, clearSearch, debouncedSearch, openDiagnosticsWindow } from '$lib/searchStore'
+  import {
+    handleScopedKeydown,
+    keyboardState,
+    openOptionsWindow,
+    setKeyboardFocusScope,
+    setPendingSearchQuery
+  } from '$lib/keyboardStore.svelte'
 
   const menuItems = ['File', 'Edit', 'View', 'Search', 'Bookmarks', 'Tools', 'Help']
 
   let inputEl: HTMLInputElement | undefined = $state(undefined)
-  let queryText = $state('')
+  let openMenu = $state<string | null>(null)
 
   onMount(() => {
-    queryText = searchState.query
+    setPendingSearchQuery(searchState.query)
     inputEl?.focus()
+    setKeyboardFocusScope('search_edit')
   })
 
   function handleInput() {
-    debouncedSearch(queryText)
-  }
-
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter') {
-      search(queryText)
-    } else if (e.key === 'Escape') {
-      queryText = ''
-      clearSearch()
-    } else if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      selectNext()
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      selectPrevious()
-    } else if (e.key === 'Delete' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
-      e.preventDefault()
-      trashSelected()
-    } else if (e.key === 'Delete' && e.shiftKey) {
-      e.preventDefault()
-      deleteSelected()
-    } else if (e.key === 'c' && (e.ctrlKey || e.metaKey) && !window.getSelection()?.toString()) {
-      e.preventDefault()
-      copySelectedPath()
-    } else if (e.key === 'o' && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault()
-      openSelected()
-    }
+    debouncedSearch(keyboardState.pendingSearchQuery)
   }
 </script>
 
 <div class="search-chrome">
   <div class="menu-bar" role="menubar" aria-label="Application menu">
     {#each menuItems as item}
-      <button class="menu-item" type="button">{item}</button>
+      <div class="menu-entry">
+        <button
+          class="menu-item"
+          type="button"
+          aria-haspopup={item === 'Tools' ? 'menu' : undefined}
+          aria-expanded={item === 'Tools' ? openMenu === item : undefined}
+          onclick={() => {
+            openMenu = item === 'Tools' ? (openMenu === item ? null : item) : null
+          }}
+        >
+          {item}
+        </button>
+
+        {#if item === 'Tools' && openMenu === item}
+          <div class="menu-popup" role="menu" aria-label="Tools">
+            <button
+              class="menu-popup-item"
+              type="button"
+              role="menuitem"
+              onclick={async () => {
+                openMenu = null
+                await openOptionsWindow()
+              }}
+            >
+              Options...
+            </button>
+          </div>
+        {/if}
+      </div>
     {/each}
   </div>
 
@@ -58,20 +67,28 @@
       type="text"
       placeholder="Search files..."
       class="search-input"
-      bind:value={queryText}
+      bind:value={keyboardState.pendingSearchQuery}
       oninput={handleInput}
-      onkeydown={handleKeydown}
+      onkeydown={(event) => {
+        const handled = handleScopedKeydown(event, 'search_edit')
+        if (handled) {
+          event.stopPropagation()
+          return
+        }
+        event.stopPropagation()
+      }}
+      onfocus={() => setKeyboardFocusScope('search_edit')}
     />
     <button
       class="clear-btn"
-      class:visible={queryText.length > 0}
+      class:visible={keyboardState.pendingSearchQuery.length > 0}
       type="button"
       aria-label="Clear search"
-      aria-hidden={queryText.length === 0}
-      tabindex={queryText.length > 0 ? 0 : -1}
-      disabled={queryText.length === 0}
+      aria-hidden={keyboardState.pendingSearchQuery.length === 0}
+      tabindex={keyboardState.pendingSearchQuery.length > 0 ? 0 : -1}
+      disabled={keyboardState.pendingSearchQuery.length === 0}
       onclick={() => {
-        queryText = ''
+        setPendingSearchQuery('')
         clearSearch()
       }}
     >
@@ -111,6 +128,36 @@
   }
 
   .menu-item:hover {
+    background: var(--bg-hover);
+  }
+
+  .menu-entry {
+    position: relative;
+  }
+
+  .menu-popup {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    min-width: 144px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    box-shadow: 0 8px 20px rgb(0 0 0 / 14%);
+    z-index: 20;
+    padding: 4px;
+  }
+
+  .menu-popup-item {
+    width: 100%;
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    text-align: left;
+    font-size: 12px;
+    padding: 6px 8px;
+  }
+
+  .menu-popup-item:hover {
     background: var(--bg-hover);
   }
 

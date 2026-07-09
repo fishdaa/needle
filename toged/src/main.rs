@@ -142,27 +142,11 @@ fn discover_roots(config: &Config) -> Vec<PathBuf> {
     if !config.roots.is_empty() {
         return config.roots.clone();
     }
-    let mut roots = Vec::new();
-    if let Ok(content) = fs::read_to_string("/proc/self/mountinfo") {
-        for line in content.lines() {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() < 9 {
-                continue;
-            }
-            let mount_point = parts[4];
-            let fs_type = parts[parts.len() - 3];
-            if config.exclude_fstypes.iter().any(|t| t == fs_type) {
-                continue;
-            }
-            if matches!(fs_type, "ext4" | "btrfs" | "xfs" | "zfs" | "ext3" | "ext2") {
-                roots.push(PathBuf::from(mount_point));
-            }
-        }
-    }
-    if roots.is_empty() {
-        roots.push(PathBuf::from("/"));
-    }
-    roots
+    env::var_os("HOME")
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("USERPROFILE").map(PathBuf::from))
+        .into_iter()
+        .collect()
 }
 
 fn build_index(state_dir: &Path, config: &Config, state: &Arc<Mutex<DaemonState>>) -> (Index, u64) {
@@ -246,6 +230,19 @@ fn is_ignored_path(path: &str, state_dir: &Path, config_dir: &Path, is_dir: bool
                     bytes.len() > 1 && bytes.starts_with(b".")
                 })
                 .unwrap_or(false))
+}
+
+fn is_within_roots(path: &str, roots: &[PathBuf]) -> bool {
+    let path = Path::new(path);
+    roots.iter().any(|root| path_matches_root(path, root))
+}
+
+fn path_matches_root(path: &Path, root: &Path) -> bool {
+    match (fs::canonicalize(path), fs::canonicalize(root)) {
+        (Ok(path), Ok(root)) => path.starts_with(root),
+        (_, Ok(root)) => path.starts_with(&root),
+        _ => path.starts_with(root),
+    }
 }
 
 fn metadata_snapshot(path: &str) -> (u64, i64, i64, i64) {
@@ -781,6 +778,9 @@ fn start_watcher(
                     for event in events {
                         match &event {
                             WatchEvent::Create { path, is_dir } => {
+                                if !is_within_roots(path, &dirs) {
+                                    continue;
+                                }
                                 if is_ignored_path(path, &state_dir, &config_dir, *is_dir) {
                                     continue;
                                 }
@@ -799,6 +799,9 @@ fn start_watcher(
                                 );
                             }
                             WatchEvent::Delete { path } => {
+                                if !is_within_roots(path, &dirs) {
+                                    continue;
+                                }
                                 if is_ignored_path(path, &state_dir, &config_dir, false) {
                                     continue;
                                 }
@@ -806,6 +809,9 @@ fn start_watcher(
                                 st.index.remove(path);
                             }
                             WatchEvent::Modify { path } => {
+                                if !is_within_roots(path, &dirs) {
+                                    continue;
+                                }
                                 if is_ignored_path(path, &state_dir, &config_dir, false) {
                                     continue;
                                 }
@@ -813,6 +819,11 @@ fn start_watcher(
                                 st.index.update_metadata(path);
                             }
                             WatchEvent::Move { from, to } => {
+                                let from_in_roots = is_within_roots(from, &dirs);
+                                let to_in_roots = is_within_roots(to, &dirs);
+                                if !from_in_roots && !to_in_roots {
+                                    continue;
+                                }
                                 let from_ignored =
                                     is_ignored_path(from, &state_dir, &config_dir, false);
                                 let to_ignored =
@@ -823,10 +834,10 @@ fn start_watcher(
                                         std::path::Path::new(to).is_dir(),
                                     );
                                 append_watcher_log(&mut st, format!("move {} -> {}", from, to));
-                                if !from_ignored {
+                                if from_in_roots && !from_ignored {
                                     st.index.remove(from);
                                 }
-                                if !to_ignored {
+                                if to_in_roots && !to_ignored {
                                     let is_dir = std::path::Path::new(to).is_dir();
                                     let (size, modified, created, accessed) = metadata_snapshot(to);
                                     st.index.insert_with_metadata(

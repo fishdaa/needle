@@ -4,6 +4,15 @@
   import StatusBar from './components/StatusBar.svelte'
   import DebugWindow from './components/DiagnosticsPanel.svelte'
   import ErrorToast from './components/ErrorToast.svelte'
+  import OptionsWindow from './components/OptionsWindow.svelte'
+  import { listen } from '@tauri-apps/api/event'
+  import {
+    handleMainWindowKeydown,
+    loadKeyboardSettings,
+    setKeyboardFocusScope,
+    setKeyboardSettings
+  } from '$lib/keyboardStore.svelte'
+  import type { KeyboardSettings } from '$lib/types'
 
   let isDark = $state(false)
   const windowLabel = window.__TAURI_INTERNALS__?.metadata?.currentWindow?.label ?? 'main'
@@ -11,11 +20,37 @@
   $effect(() => {
     isDark = window.matchMedia('(prefers-color-scheme: dark)').matches
   })
+
+  $effect(() => {
+    if (windowLabel !== 'main' && !windowLabel.startsWith('main-')) return
+
+    void loadKeyboardSettings()
+    setKeyboardFocusScope('search_edit')
+
+    const handleKeydown = (event: KeyboardEvent) => {
+      handleMainWindowKeydown(event)
+    }
+
+    let unlisten: (() => void) | undefined
+    void listen<KeyboardSettings>('keyboard-settings-updated', (event) => {
+      setKeyboardSettings(event.payload)
+    }).then((cleanup) => {
+      unlisten = cleanup
+    })
+
+    window.addEventListener('keydown', handleKeydown)
+    return () => {
+      window.removeEventListener('keydown', handleKeydown)
+      unlisten?.()
+    }
+  })
 </script>
 
 <div class="app" class:dark={isDark}>
   {#if windowLabel === 'debug'}
     <DebugWindow />
+  {:else if windowLabel === 'options'}
+    <OptionsWindow />
   {:else}
     <SearchBar />
     <ResultTable />

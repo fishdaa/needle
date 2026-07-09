@@ -1,6 +1,7 @@
 <script lang="ts">
   import { state as searchState, hasResults } from '$lib/searchStore'
-  import { setSort, selectRow, selectNext, selectPrevious, openSelected, revealSelected, copySelectedPath, trashSelected, deleteSelected, formatSize, formatTimestamp, setTableColumnWidths } from '$lib/searchStore'
+  import { setSort, selectRow, openSelected, revealSelected, copySelectedPath, trashSelected, deleteSelected, formatSize, formatTimestamp, setTableColumnWidths } from '$lib/searchStore'
+  import { setKeyboardFocusScope } from '$lib/keyboardStore.svelte'
   import ContextMenu from './ContextMenu.svelte'
   import type { SortColumn } from '$lib/types'
   import { onDestroy, onMount } from 'svelte'
@@ -42,31 +43,6 @@
 
   function closeContextMenu() {
     contextMenu.visible = false
-  }
-
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      selectNext()
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      selectPrevious()
-    } else if (e.key === 'Enter') {
-      e.preventDefault()
-      openSelected()
-    } else if (e.key === 'Delete' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
-      e.preventDefault()
-      trashSelected()
-    } else if (e.key === 'Delete' && e.shiftKey) {
-      e.preventDefault()
-      deleteSelected()
-    } else if (e.key === 'c' && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault()
-      copySelectedPath()
-    } else if (e.key === 'o' && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault()
-      openSelected()
-    }
   }
 
   function startResize(index: number, event: PointerEvent) {
@@ -187,8 +163,11 @@
     tabindex="0"
     role="grid"
     aria-label="Search results"
-    onkeydown={handleKeydown}
-    onclick={() => scrollEl?.focus()}
+    onclick={() => {
+      scrollEl?.focus()
+      setKeyboardFocusScope('result_list')
+    }}
+    onfocus={() => setKeyboardFocusScope('result_list')}
     onscroll={() => {
       if (programmaticScroll) {
         programmaticScroll = false

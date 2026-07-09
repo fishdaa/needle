@@ -1,12 +1,18 @@
 use crate::ipc_client;
+use crate::keyboard::{
+    apply_settings_to_config, default_keyboard_settings, settings_from_config,
+    KeyboardSettingsPayload,
+};
 use crate::state::AppState;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
-use tauri::{Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use toge_core::sys::{FanotifyWatcher, FsWatcher, WatchEvent};
+
+const WINDOW_ACTION_DEBOUNCE_MS: u64 = 600;
 
 #[derive(serde::Serialize)]
 pub struct SearchResult {
@@ -145,6 +151,33 @@ pub fn reindex_index(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn get_keyboard_settings(state: State<'_, AppState>) -> Result<KeyboardSettingsPayload, String> {
+    let config = state.load_config();
+    Ok(settings_from_config(&config))
+}
+
+#[tauri::command]
+pub fn save_keyboard_settings(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    settings: KeyboardSettingsPayload,
+) -> Result<KeyboardSettingsPayload, String> {
+    let mut config = state.load_config();
+    let normalized = apply_settings_to_config(&mut config, settings)?;
+    state.save_config(&config)?;
+    state.set_cached_settings(normalized.clone());
+    crate::global_hotkeys::register_window_hotkeys(&app, &normalized)?;
+    app.emit("keyboard-settings-updated", &normalized)
+        .map_err(|e| e.to_string())?;
+    Ok(normalized)
+}
+
+#[tauri::command]
+pub fn restore_default_keyboard_settings() -> Result<KeyboardSettingsPayload, String> {
+    Ok(default_keyboard_settings())
+}
+
+#[tauri::command]
 pub fn run_watcher_self_test() -> Result<WatcherSelfTestResult, String> {
     #[cfg(not(target_os = "linux"))]
     {
@@ -268,13 +301,17 @@ fn format_watch_event(event: &WatchEvent) -> String {
 
 #[tauri::command]
 pub async fn open_debug_window(app: tauri::AppHandle) -> Result<(), String> {
+    open_debug_window_internal(&app)
+}
+
+pub(crate) fn open_debug_window_internal(app: &tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("debug") {
         window.show().map_err(|e| e.to_string())?;
         window.set_focus().map_err(|e| e.to_string())?;
         return Ok(());
     }
 
-    WebviewWindowBuilder::new(&app, "debug", WebviewUrl::default())
+    WebviewWindowBuilder::new(app, "debug", WebviewUrl::default())
         .title("Toge Debug")
         .inner_size(760.0, 560.0)
         .min_inner_size(520.0, 360.0)
@@ -283,4 +320,210 @@ pub async fn open_debug_window(app: tauri::AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn open_options_window(app: tauri::AppHandle) -> Result<(), String> {
+    open_options_window_internal(&app)
+}
+
+pub(crate) fn open_options_window_internal(app: &tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("options") {
+        window.show().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    WebviewWindowBuilder::new(app, "options", WebviewUrl::default())
+        .title("Everything Options")
+        .inner_size(720.0, 560.0)
+        .min_inner_size(640.0, 480.0)
+        .resizable(true)
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn close_options_window(window: tauri::Window) -> Result<(), String> {
+    window.close().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn create_new_main_window(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    create_new_main_window_internal(&app, &state)
+}
+
+pub(crate) fn create_new_main_window_internal(
+    app: &tauri::AppHandle,
+    state: &AppState,
+) -> Result<String, String> {
+    if !begin_main_window_action(state) {
+        eprintln!("[cmd] create_new DROPPED (debounce)");
+        return Ok(existing_or_default_main_label(app));
+    }
+    eprintln!("[cmd] create_new RUN");
+
+    let label = if app.get_webview_window("main").is_none() {
+        "main".to_string()
+    } else {
+        format!("main-{}", state.next_window_id())
+    };
+
+    build_main_window(&app, &label)?;
+    Ok(label)
+}
+
+#[tauri::command]
+pub async fn show_main_window(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    show_main_window_internal(&app, &state)
+}
+
+pub(crate) fn show_main_window_internal(
+    app: &tauri::AppHandle,
+    state: &AppState,
+) -> Result<String, String> {
+    if !begin_main_window_action(state) {
+        eprintln!("[cmd] show DROPPED (debounce)");
+        return Ok(existing_or_default_main_label(app));
+    }
+    eprintln!("[cmd] show RUN");
+
+    if let Some(window) = first_main_window(app) {
+        window.show().map_err(|e| e.to_string())?;
+        window.unminimize().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+        return Ok(window.label().to_string());
+    }
+
+    let label = if app.get_webview_window("main").is_none() {
+        "main".to_string()
+    } else {
+        format!("main-{}", state.next_window_id())
+    };
+    build_main_window(&app, &label)?;
+    Ok(label)
+}
+
+#[tauri::command]
+pub async fn toggle_main_window(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    toggle_main_window_internal(&app, &state)
+}
+
+pub(crate) fn toggle_main_window_internal(
+    app: &tauri::AppHandle,
+    state: &AppState,
+) -> Result<String, String> {
+    if !begin_main_window_action(state) {
+        eprintln!("[cmd] toggle DROPPED (debounce)");
+        return Ok(existing_or_default_main_label(app));
+    }
+
+    let visible_count = app
+        .webview_windows()
+        .values()
+        .filter(|w| is_main_window_label(w.label()) && w.is_visible().unwrap_or(false))
+        .count();
+    eprintln!("[cmd] toggle RUN visible={}", visible_count);
+
+    for window in app.webview_windows().values() {
+        if is_main_window_label(window.label()) {
+            let is_visible = window.is_visible().map_err(|e| e.to_string())?;
+            if is_visible {
+                eprintln!("[cmd] toggle -> hide {}", window.label());
+                window.hide().map_err(|e| e.to_string())?;
+                return Ok(window.label().to_string());
+            }
+        }
+    }
+
+    if let Some(window) = first_main_window(&app) {
+        eprintln!("[cmd] toggle -> show {}", window.label());
+        window.show().map_err(|e| e.to_string())?;
+        window.unminimize().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+        return Ok(window.label().to_string());
+    }
+
+    eprintln!("[cmd] toggle -> build new");
+    let label = if app.get_webview_window("main").is_none() {
+        "main".to_string()
+    } else {
+        format!("main-{}", state.next_window_id())
+    };
+    build_main_window(&app, &label)?;
+    Ok(label)
+}
+
+pub(crate) fn handle_main_window_close_requested(
+    window: &tauri::Window,
+    event: &WindowEvent,
+) -> bool {
+    if !is_main_window_label(window.label()) {
+        return false;
+    }
+
+    if let WindowEvent::CloseRequested { api, .. } = event {
+        let state = window.app_handle().state::<AppState>();
+        if state.is_exiting() {
+            return false;
+        }
+
+        api.prevent_close();
+        let _ = window.hide();
+        return true;
+    }
+
+    false
+}
+
+fn build_main_window(app: &tauri::AppHandle, label: &str) -> Result<(), String> {
+    if app.get_webview_window(label).is_some() {
+        return Ok(());
+    }
+
+    WebviewWindowBuilder::new(app, label, WebviewUrl::default())
+        .title("Toge")
+        .inner_size(960.0, 640.0)
+        .min_inner_size(480.0, 320.0)
+        .resizable(true)
+        .decorations(true)
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+fn first_main_window(app: &tauri::AppHandle) -> Option<tauri::WebviewWindow> {
+    if let Some(window) = app.get_webview_window("main") {
+        return Some(window);
+    }
+
+    app.webview_windows()
+        .iter()
+        .find_map(|(label, window)| is_main_window_label(label).then(|| window.clone()))
+}
+
+pub(crate) fn is_main_window_label(label: &str) -> bool {
+    label == "main" || label.starts_with("main-")
+}
+
+fn existing_or_default_main_label(app: &tauri::AppHandle) -> String {
+    first_main_window(app)
+        .map(|window| window.label().to_string())
+        .unwrap_or_else(|| "main".to_string())
+}
+
+fn begin_main_window_action(state: &AppState) -> bool {
+    state.should_process_window_action(WINDOW_ACTION_DEBOUNCE_MS)
 }

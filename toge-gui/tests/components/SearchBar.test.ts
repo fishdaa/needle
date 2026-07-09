@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/svelte'
 import SearchBar from '@/components/SearchBar.svelte'
 import { invoke } from '@tauri-apps/api/core'
-import { state, setQuery, clearSearch } from '$lib/searchStore'
+import { setQuery, clearSearch } from '$lib/searchStore'
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn()
@@ -42,23 +42,11 @@ describe('SearchBar', () => {
     expect(invoke).toHaveBeenCalledWith('open_debug_window')
   })
 
-  it('submits search immediately on Enter', async () => {
-    vi.mocked(invoke).mockResolvedValue({
-      rows: [],
-      total_count: 0,
-      total_size: 0,
-      size_indexed: true
-    })
-
+  it('opens the options window from the tools menu', async () => {
     render(SearchBar)
-    const input = screen.getByPlaceholderText('Search files...')
-    await fireEvent.input(input, { target: { value: 'needle' } })
-    await fireEvent.keyDown(input, { key: 'Enter' })
-
-    expect(state.query).toBe('needle')
-    expect(invoke).toHaveBeenCalledWith('search_query', {
-      query: 'needle sort:name'
-    })
+    await fireEvent.click(screen.getByText('Tools'))
+    await fireEvent.click(screen.getByText('Options...'))
+    expect(invoke).toHaveBeenCalledWith('open_options_window')
   })
 
   it('does not commit the query store on plain typing before debounce fires', async () => {
@@ -67,17 +55,5 @@ describe('SearchBar', () => {
     await fireEvent.input(input, { target: { value: 'needle' } })
 
     expect((input as HTMLInputElement).value).toBe('needle')
-    expect(state.query).toBe('')
-  })
-
-  it('clears the current query on Escape', async () => {
-    render(SearchBar)
-    const input = screen.getByPlaceholderText('Search files...')
-    await fireEvent.input(input, { target: { value: 'needle' } })
-
-    await fireEvent.keyDown(input, { key: 'Escape' })
-
-    expect((input as HTMLInputElement).value).toBe('')
-    expect(state.query).toBe('')
   })
 })

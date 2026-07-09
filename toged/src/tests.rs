@@ -1,6 +1,7 @@
 use crate::{
-    apply_highlight_ranges, canonical_starts_with, ensure_private_dir, handle_request,
-    highlight_path, is_ignored_path, is_own_path, term_needles, DaemonState, WatcherStatus,
+    apply_highlight_ranges, canonical_starts_with, discover_roots, ensure_private_dir, handle_request,
+    highlight_path, is_ignored_path, is_own_path, is_within_roots, term_needles, DaemonState,
+    WatcherStatus,
 };
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -252,4 +253,34 @@ fn is_ignored_path_keeps_hidden_files_outside_hidden_dirs() {
         &config,
         false
     ));
+}
+
+#[test]
+fn discover_roots_falls_back_to_home_directory() {
+    let cfg = Config::default_config();
+    let expected_home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("USERPROFILE").map(std::path::PathBuf::from));
+
+    match expected_home {
+        Some(home) => assert_eq!(discover_roots(&Config { roots: Vec::new(), ..cfg }), vec![home]),
+        None => assert!(discover_roots(&Config { roots: Vec::new(), ..cfg }).is_empty()),
+    }
+}
+
+#[test]
+fn is_within_roots_rejects_paths_outside_home_root() {
+    let home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("USERPROFILE").map(std::path::PathBuf::from));
+
+    let Some(home) = home else {
+        return;
+    };
+
+    assert!(is_within_roots(
+        &home.join("documents/file.txt").to_string_lossy(),
+        std::slice::from_ref(&home)
+    ));
+    assert!(!is_within_roots("/var/tmp/outside.txt", &[home]));
 }
