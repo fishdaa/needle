@@ -55,6 +55,12 @@ pub struct WatcherSelfTestResult {
 }
 
 #[tauri::command]
+pub fn window_ready(window: tauri::Window) -> Result<(), String> {
+    window.show().map_err(|e| e.to_string())?;
+    window.set_focus().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn search_query(
     state: State<'_, AppState>,
     query: String,
@@ -328,6 +334,7 @@ pub(crate) fn open_debug_window_internal(app: &tauri::AppHandle) -> Result<(), S
         .inner_size(760.0, 560.0)
         .min_inner_size(520.0, 360.0)
         .resizable(true)
+        .visible(false)
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -351,6 +358,7 @@ pub(crate) fn open_options_window_internal(app: &tauri::AppHandle) -> Result<(),
         .inner_size(720.0, 560.0)
         .min_inner_size(640.0, 480.0)
         .resizable(true)
+        .visible(false)
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -483,6 +491,7 @@ fn build_main_window(app: &tauri::AppHandle, label: &str) -> Result<(), String> 
         .min_inner_size(480.0, 320.0)
         .resizable(true)
         .decorations(true)
+        .visible(false)
         .build()
         .map_err(|e| e.to_string())?;
 
