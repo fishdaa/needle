@@ -98,3 +98,13 @@ jobs:
             dist/toge-gui-*.rpm
             dist/Toge_*.AppImage
             dist/Toge_*.sha256
+
+  package-arm64:
+    if: ${{ !contains(inputs.tag || github.ref_name, '-') }}
+    needs: build-release
+    uses: ./.github/workflows/package-gui-arm64.yml
+    with:
+      ref: ${{ inputs.tag || github.ref_name }}
+      version: ${{ inputs.tag || github.ref_name }}
+      tag_name: ${{ inputs.tag || github.ref_name }}
+    secrets: inherit

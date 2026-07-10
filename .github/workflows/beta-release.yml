@@ -27,6 +27,9 @@ jobs:
   publish-beta:
     needs: checks
     runs-on: ubuntu-22.04
+    outputs:
+      tag: ${{ steps.beta.outputs.tag }}
+      version: ${{ steps.beta.outputs.version }}
     env:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
     steps:
@@ -113,3 +116,12 @@ jobs:
       - name: Publish beta crates
         if: ${{ env.CARGO_REGISTRY_TOKEN != '' }}
         run: scripts/release/publish-crates.sh beta
+
+  package-arm64:
+    needs: publish-beta
+    uses: ./.github/workflows/package-gui-arm64.yml
+    with:
+      ref: ${{ needs.publish-beta.outputs.tag }}
+      version: ${{ needs.publish-beta.outputs.version }}
+      tag_name: ${{ needs.publish-beta.outputs.tag }}
+    secrets: inherit

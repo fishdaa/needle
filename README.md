@@ -69,9 +69,9 @@ cargo build --workspace
 
 ### Linux GUI Packages
 
-Stable releases include x86_64 DEB, RPM, and AppImage packages. Each package
-includes the desktop application, the `toge` CLI, and the `toged` daemon the GUI
-starts on demand. Release assets also include SHA-256 checksum files.
+Stable releases include x86_64 and ARM64 DEB, RPM, and AppImage packages. Each
+package includes the desktop application, the `toge` CLI, and the `toged` daemon
+the GUI starts on demand. Release assets also include SHA-256 checksum files.
 
 To build all GUI release formats locally:
 

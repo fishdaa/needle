@@ -21,6 +21,8 @@ jobs:
   publish-nightly:
     needs: checks
     runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.nightly.outputs.version }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -100,3 +102,12 @@ jobs:
             dist/toge-gui-*.rpm
             dist/Toge_*.AppImage
             dist/Toge_*.sha256
+
+  package-arm64:
+    needs: publish-nightly
+    uses: ./.github/workflows/package-gui-arm64.yml
+    with:
+      ref: nightly
+      version: ${{ needs.publish-nightly.outputs.version }}
+      tag_name: nightly
+    secrets: inherit
