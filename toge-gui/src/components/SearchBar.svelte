@@ -1,6 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { state as searchState, clearSearch, debouncedSearch, openDiagnosticsWindow } from '$lib/searchStore'
+  import { getCurrentWindow } from '@tauri-apps/api/window'
+  import {
+    state as searchState,
+    clearSearch,
+    debouncedSearch,
+    openDiagnosticsWindow,
+    setSelectedIndex
+  } from '$lib/searchStore'
   import {
     handleScopedKeydown,
     keyboardState,
@@ -14,10 +21,38 @@
   let inputEl: HTMLInputElement | undefined = $state(undefined)
   let openMenu = $state<string | null>(null)
 
+  function focusSearchInput() {
+    inputEl?.focus({ preventScroll: true })
+    setKeyboardFocusScope('search_edit')
+  }
+
+  function activateSearchInputAfterShow() {
+    setSelectedIndex(-1)
+    focusSearchInput()
+  }
+
   onMount(() => {
     setPendingSearchQuery(searchState.query)
-    inputEl?.focus()
-    setKeyboardFocusScope('search_edit')
+    focusSearchInput()
+    window.addEventListener('focus', activateSearchInputAfterShow)
+
+    let disposed = false
+    let unlisten: (() => void) | undefined
+    void getCurrentWindow().onFocusChanged((event) => {
+      if (event.payload) activateSearchInputAfterShow()
+    }).then((cleanup) => {
+      if (disposed) {
+        cleanup()
+      } else {
+        unlisten = cleanup
+      }
+    })
+
+    return () => {
+      disposed = true
+      window.removeEventListener('focus', activateSearchInputAfterShow)
+      unlisten?.()
+    }
   })
 
   function handleInput() {

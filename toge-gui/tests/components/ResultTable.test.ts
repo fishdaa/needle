@@ -27,6 +27,18 @@ describe('ResultTable', () => {
     expect(screen.getByLabelText('Resize SIZE column')).toBeTruthy()
   })
 
+  it('starts the scroll viewport below the table header', () => {
+    const { container } = render(ResultTable)
+    const headerViewport = container.querySelector('.table-header-viewport')
+    const header = container.querySelector('.table-header')
+    const scrollViewport = container.querySelector('.table-scroll')
+
+    expect(headerViewport).toBeTruthy()
+    expect(scrollViewport).toBeTruthy()
+    expect(scrollViewport?.contains(header)).toBe(false)
+    expect(headerViewport?.nextElementSibling).toBe(scrollViewport)
+  })
+
   it('prevents the native context menu when opening the custom row menu', async () => {
     setResults([
       {

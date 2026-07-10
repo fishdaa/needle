@@ -18,6 +18,7 @@
   let contextMenu = $state({ visible: false, x: 0, y: 0 })
   let scrollEl: HTMLDivElement | undefined = $state(undefined)
   let scrollTop = $state(0)
+  let scrollLeft = $state(0)
   let viewportHeight = $state(0)
   let programmaticScroll = false
 
@@ -154,32 +155,17 @@
   })
 </script>
 
-<div class="result-table" style={`--table-columns: ${columnTemplate()};`}>
-  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    class="table-scroll"
-    bind:this={scrollEl}
-    tabindex="0"
-    role="grid"
-    aria-label="Search results"
-    onclick={() => {
-      scrollEl?.focus()
-      setKeyboardFocusScope('result_list')
-    }}
-    onfocus={() => setKeyboardFocusScope('result_list')}
-    onscroll={() => {
-      if (programmaticScroll) {
-        programmaticScroll = false
-        return
-      }
-      scrollTop = scrollEl?.scrollTop ?? 0
-    }}
-  >
-    <div class="table-header">
+<div
+  class="result-table"
+  style={`--table-columns: ${columnTemplate()};`}
+  role="grid"
+  aria-label="Search results"
+>
+  <div class="table-header-viewport">
+    <div class="table-header" style={`transform: translateX(${-scrollLeft}px);`}>
       {#each columns as col, index}
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
           class="header-cell"
           class:active={searchState.sortColumn === col.key}
@@ -204,7 +190,29 @@
         </div>
       {/each}
     </div>
+  </div>
 
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="table-scroll"
+    bind:this={scrollEl}
+    tabindex="0"
+    onclick={() => {
+      scrollEl?.focus()
+      setKeyboardFocusScope('result_list')
+    }}
+    onfocus={() => setKeyboardFocusScope('result_list')}
+    onkeydown={() => setKeyboardFocusScope('result_list')}
+    onscroll={() => {
+      scrollLeft = scrollEl?.scrollLeft ?? 0
+      if (programmaticScroll) {
+        programmaticScroll = false
+        return
+      }
+      scrollTop = scrollEl?.scrollTop ?? 0
+    }}
+  >
     <div class="table-body">
       {#if topSpacerHeight > 0}
         <div class="row-spacer" style={`height: ${topSpacerHeight}px;`}></div>
@@ -280,18 +288,21 @@
     outline-offset: -2px;
   }
 
+  .table-header-viewport {
+    flex: none;
+    overflow: hidden;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg-surface) 82%, var(--bg));
+    box-shadow: inset 0 -1px 0 var(--border-subtle);
+  }
+
   .table-header {
     display: grid;
     grid-template-columns: var(--table-columns);
     gap: 16px;
     padding: 10px 16px;
-    border-bottom: 1px solid var(--border);
-    background: color-mix(in srgb, var(--bg-surface) 82%, var(--bg));
     min-width: max-content;
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    box-shadow: inset 0 -1px 0 var(--border-subtle);
+    will-change: transform;
   }
 
   .header-cell {
