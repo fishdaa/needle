@@ -32,7 +32,13 @@ unsafe extern "C" {
     fn fanotify_mark(fan_fd: i32, flags: u32, mask: u64, dirfd: i32, pathname: *const i8) -> i32;
     fn open_by_handle_at(mountdirfd: i32, handle: *mut FileHandle, flags: i32) -> i32;
     fn read(fd: i32, buf: *mut u8, count: usize) -> isize;
-    fn mount(source: *const i8, target: *const i8, fstype: *const i8, flags: u64, data: *const std::ffi::c_void) -> i32;
+    fn mount(
+        source: *const i8,
+        target: *const i8,
+        fstype: *const i8,
+        flags: u64,
+        data: *const std::ffi::c_void,
+    ) -> i32;
     fn umount(target: *const i8) -> i32;
     fn mkdir(path: *const i8, mode: u32) -> i32;
 }
@@ -147,8 +153,9 @@ impl FanotifyWatcher {
             }
             let mp = PathBuf::from(fields[4]);
             if path.starts_with(&mp) {
-                let is_better =
-                    best.as_ref().is_none_or(|b| mp.as_os_str().len() > b.as_os_str().len());
+                let is_better = best
+                    .as_ref()
+                    .is_none_or(|b| mp.as_os_str().len() > b.as_os_str().len());
                 if is_better {
                     best = Some(mp);
                 }
@@ -288,7 +295,12 @@ impl FanotifyWatcher {
         }
     }
 
-    fn resolve_handle(&self, handle_bytes: u32, handle_type: i32, handle_data: &[u8]) -> Option<PathBuf> {
+    fn resolve_handle(
+        &self,
+        handle_bytes: u32,
+        handle_type: i32,
+        handle_data: &[u8],
+    ) -> Option<PathBuf> {
         let mut fh = FileHandleBuf {
             handle_bytes,
             handle_type,
@@ -377,9 +389,7 @@ impl FanotifyWatcher {
                 break;
             }
 
-            if info_type == FAN_EVENT_INFO_TYPE_DFID_NAME
-                || info_type == FAN_EVENT_INFO_TYPE_DFID
-            {
+            if info_type == FAN_EVENT_INFO_TYPE_DFID_NAME || info_type == FAN_EVENT_INFO_TYPE_DFID {
                 let fh_off = off + FID_HDR_LEN + FSID_LEN;
                 if fh_off + FILE_HANDLE_HDR_LEN > event_end {
                     break;
@@ -451,8 +461,7 @@ impl FsWatcher for FanotifyWatcher {
                 self.marked_count += 1;
                 return Ok(());
             }
-            Err(e) if e.raw_os_error() == Some(18) => {
-            }
+            Err(e) if e.raw_os_error() == Some(18) => {}
             Err(e) => {
                 return Err(e);
             }
@@ -466,14 +475,13 @@ impl FsWatcher for FanotifyWatcher {
         let btrfs_root = {
             let mut existing: Option<PathBuf> = None;
             for marked in &self.marked {
-                if let Some((first_prefix, _)) = marked.path_translations.first() {
-                    if first_prefix
+                if let Some((first_prefix, _)) = marked.path_translations.first()
+                    && first_prefix
                         .to_str()
                         .is_some_and(|s| s.contains("toge-btrfs-root"))
-                    {
-                        existing = Some(first_prefix.clone());
-                        break;
-                    }
+                {
+                    existing = Some(first_prefix.clone());
+                    break;
                 }
             }
             if let Some(root) = existing {
@@ -541,7 +549,9 @@ impl FsWatcher for FanotifyWatcher {
                 if fd != FAN_NOFD {
                     let _ = unsafe { OwnedFd::from_raw_fd(fd) };
                 }
-                events.push(WatchEvent::Overflow { path: String::new() });
+                events.push(WatchEvent::Overflow {
+                    path: String::new(),
+                });
                 offset += event_len;
                 continue;
             }
@@ -579,7 +589,10 @@ impl FsWatcher for FanotifyWatcher {
             let path_str = path.to_string_lossy().to_string();
 
             if mask & FAN_CREATE != 0 || mask & FAN_MOVED_TO != 0 {
-                events.push(WatchEvent::Create { path: path_str, is_dir });
+                events.push(WatchEvent::Create {
+                    path: path_str,
+                    is_dir,
+                });
             } else if mask & FAN_DELETE != 0 || mask & FAN_MOVED_FROM != 0 {
                 events.push(WatchEvent::Delete { path: path_str });
             } else if mask & FAN_MODIFY != 0 {

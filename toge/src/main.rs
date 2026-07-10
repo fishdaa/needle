@@ -10,7 +10,7 @@ use std::thread;
 use std::time::Duration;
 use toge_core::highlight::render_ansi;
 use toge_core::ipc::{
-    DaemonStatus, OutputFormat as IpcFormat, QueryRequest, Request, Response, MAX_IPC_MESSAGE_SIZE,
+    DaemonStatus, MAX_IPC_MESSAGE_SIZE, OutputFormat as IpcFormat, QueryRequest, Request, Response,
 };
 use toge_core::opts::{NdlOptions, OutputFormat};
 
@@ -132,14 +132,14 @@ fn daemon_responding(sock: &Path) -> bool {
 }
 
 fn daemon_command(sock: &Path) -> Command {
-    if let Ok(current) = env::current_exe() {
-        if let Some(bin_dir) = current.parent() {
-            let sibling = bin_dir.join("toged");
-            if sibling.exists() {
-                let mut cmd = Command::new(sibling);
-                cmd.arg("--socket").arg(sock);
-                return cmd;
-            }
+    if let Ok(current) = env::current_exe()
+        && let Some(bin_dir) = current.parent()
+    {
+        let sibling = bin_dir.join("toged");
+        if sibling.exists() {
+            let mut cmd = Command::new(sibling);
+            cmd.arg("--socket").arg(sock);
+            return cmd;
         }
     }
     let mut cmd = Command::new("toged");

@@ -1,7 +1,7 @@
 use crate::{
-    apply_highlight_ranges, canonical_starts_with, discover_roots, ensure_private_dir, handle_request,
-    highlight_path, is_ignored_path, is_own_path, is_within_roots, status_response, term_needles,
-    DaemonState, WatcherStatus,
+    DaemonState, WatcherStatus, apply_highlight_ranges, canonical_starts_with, discover_roots,
+    ensure_private_dir, handle_request, highlight_path, is_ignored_path, is_own_path,
+    is_within_roots, status_response, term_needles,
 };
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -280,8 +280,20 @@ fn discover_roots_falls_back_to_home_directory() {
         .or_else(|| std::env::var_os("USERPROFILE").map(std::path::PathBuf::from));
 
     match expected_home {
-        Some(home) => assert_eq!(discover_roots(&Config { roots: Vec::new(), ..cfg }), vec![home]),
-        None => assert!(discover_roots(&Config { roots: Vec::new(), ..cfg }).is_empty()),
+        Some(home) => assert_eq!(
+            discover_roots(&Config {
+                roots: Vec::new(),
+                ..cfg
+            }),
+            vec![home]
+        ),
+        None => assert!(
+            discover_roots(&Config {
+                roots: Vec::new(),
+                ..cfg
+            })
+            .is_empty()
+        ),
     }
 }
 

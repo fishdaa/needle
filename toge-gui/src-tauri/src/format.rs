@@ -62,7 +62,6 @@ fn format_time_local(unix: i64) -> Option<String> {
         fn localtime_r(timep: *const i64, result: *mut Tm) -> *mut Tm;
     }
 
-    let unix = unix as i64;
     let mut tm = MaybeUninit::<Tm>::uninit();
     let ptr = unsafe { localtime_r(&unix, tm.as_mut_ptr()) };
     if ptr.is_null() {

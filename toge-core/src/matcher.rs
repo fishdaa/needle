@@ -1,6 +1,6 @@
 //! Evaluate a parsed Query against Index entries.
 
-use crate::index::{contains_ignore_case, Entry, Index};
+use crate::index::{Entry, Index, contains_ignore_case};
 use crate::query::{Query, RangeFilter, TextTerm};
 use regex::Regex;
 
@@ -57,8 +57,8 @@ pub fn match_query(index: &Index, query: &Query) -> Vec<u32> {
     // postings already maintained by Index. The full matcher still runs below,
     // so case-sensitive, whole-word, and additional filters keep their exact
     // semantics; this only removes entries that cannot possibly match.
-    if !query.match_path {
-        if let Some(seed) = query
+    if !query.match_path
+        && let Some(seed) = query
             .terms
             .iter()
             .filter_map(|term| match term {
@@ -66,10 +66,9 @@ pub fn match_query(index: &Index, query: &Query) -> Vec<u32> {
                 _ => None,
             })
             .max_by_key(|value| value.len())
-        {
-            let substring_ids = index.search_substring(seed);
-            ids = intersect_sorted_ids(&ids, &substring_ids);
-        }
+    {
+        let substring_ids = index.search_substring(seed);
+        ids = intersect_sorted_ids(&ids, &substring_ids);
     }
 
     let compiled = compile_terms(&query.terms);
@@ -138,34 +137,35 @@ fn entry_matches(entry: &Entry, query: &Query, compiled: &CompiledTerms) -> bool
         }
     }
 
-    if let Some(size_filter) = &query.size {
-        if !in_range(entry.size, size_filter) {
-            return false;
-        }
+    if let Some(size_filter) = &query.size
+        && !in_range(entry.size, size_filter)
+    {
+        return false;
     }
 
-    if let Some(dm) = &query.date_modified {
-        if !in_range(entry.modified, dm) {
-            return false;
-        }
+    if let Some(dm) = &query.date_modified
+        && !in_range(entry.modified, dm)
+    {
+        return false;
     }
 
-    if let Some(dc) = &query.date_created {
-        if !in_range(entry.created, dc) {
-            return false;
-        }
+    if let Some(dc) = &query.date_created
+        && !in_range(entry.created, dc)
+    {
+        return false;
     }
 
-    if let Some(da) = &query.date_accessed {
-        if !in_range(entry.accessed, da) {
-            return false;
-        }
+    if let Some(da) = &query.date_accessed
+        && !in_range(entry.accessed, da)
+    {
+        return false;
     }
 
-    if let Some(attrs) = &query.attributes {
-        if attrs.dir.is_some() && attrs.dir != Some(entry.is_dir) {
-            return false;
-        }
+    if let Some(attrs) = &query.attributes
+        && attrs.dir.is_some()
+        && attrs.dir != Some(entry.is_dir)
+    {
+        return false;
     }
 
     if compiled.items.is_empty() {
@@ -260,15 +260,15 @@ fn compiled_term_matches(entry: &Entry, term: &CompiledTerm, query: &Query) -> b
 }
 
 fn in_range<T: PartialOrd + Copy>(value: T, range: &RangeFilter<T>) -> bool {
-    if let Some(min) = range.min {
-        if value < min {
-            return false;
-        }
+    if let Some(min) = range.min
+        && value < min
+    {
+        return false;
     }
-    if let Some(max) = range.max {
-        if value > max {
-            return false;
-        }
+    if let Some(max) = range.max
+        && value > max
+    {
+        return false;
     }
     true
 }

@@ -221,10 +221,10 @@ fn glob_match(name: &str, pattern: &str) -> bool {
 fn folder_matches(path: &Path, pattern: &str) -> bool {
     let normalized = pattern.strip_prefix("**/").unwrap_or(pattern);
     for component in path.components() {
-        if let Some(s) = component.as_os_str().to_str() {
-            if glob_match(s, normalized) {
-                return true;
-            }
+        if let Some(s) = component.as_os_str().to_str()
+            && glob_match(s, normalized)
+        {
+            return true;
         }
     }
     false

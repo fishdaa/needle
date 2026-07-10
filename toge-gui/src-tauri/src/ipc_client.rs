@@ -7,8 +7,8 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 use toge_core::ipc::{
-    DaemonStatus, QueryRequest, Request, Response, ResultsResponse, StatusResponse,
-    MAX_IPC_MESSAGE_SIZE,
+    DaemonStatus, MAX_IPC_MESSAGE_SIZE, QueryRequest, Request, Response, ResultsResponse,
+    StatusResponse,
 };
 
 pub fn socket_path() -> PathBuf {
@@ -28,14 +28,14 @@ fn default_state_dir() -> PathBuf {
 }
 
 fn daemon_command(sock: &Path) -> Command {
-    if let Ok(current) = env::current_exe() {
-        if let Some(bin_dir) = current.parent() {
-            let sibling = bin_dir.join("toged");
-            if sibling.exists() {
-                let mut cmd = Command::new(sibling);
-                cmd.arg("--socket").arg(sock);
-                return cmd;
-            }
+    if let Ok(current) = env::current_exe()
+        && let Some(bin_dir) = current.parent()
+    {
+        let sibling = bin_dir.join("toged");
+        if sibling.exists() {
+            let mut cmd = Command::new(sibling);
+            cmd.arg("--socket").arg(sock);
+            return cmd;
         }
     }
     let mut cmd = Command::new("toged");
@@ -44,7 +44,7 @@ fn daemon_command(sock: &Path) -> Command {
 }
 
 fn daemon_responding(sock: &Path) -> bool {
-    matches!(status(sock), Ok(_))
+    status(sock).is_ok()
 }
 
 pub fn ensure_daemon_running(sock: &Path) -> io::Result<()> {

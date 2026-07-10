@@ -167,7 +167,11 @@ fn simulate_move_event_watches_destination_if_exists() {
     }
 
     assert_eq!(watcher.watches.len(), 1);
-    assert!(watcher.watches.contains(&new_path.to_string_lossy().to_string()));
+    assert!(
+        watcher
+            .watches
+            .contains(&new_path.to_string_lossy().to_string())
+    );
     assert_eq!(watched.len(), 1);
     assert!(watched.contains(&new_path.to_string_lossy().to_string()));
 }
@@ -438,7 +442,10 @@ fn fanotify_watcher_rename_produces_delete_and_create() {
         for event in &events {
             match event {
                 WatchEvent::Delete { path } if path == &old_str => saw_delete = true,
-                WatchEvent::Create { path, is_dir: false } if path == &new_str => saw_create = true,
+                WatchEvent::Create {
+                    path,
+                    is_dir: false,
+                } if path == &new_str => saw_create = true,
                 _ => {}
             }
         }
@@ -447,8 +454,16 @@ fn fanotify_watcher_rename_produces_delete_and_create() {
         }
         std::thread::sleep(Duration::from_millis(25));
     }
-    assert!(saw_delete, "expected delete event for renamed-from {}", old_str);
-    assert!(saw_create, "expected create event for renamed-to {}", new_str);
+    assert!(
+        saw_delete,
+        "expected delete event for renamed-from {}",
+        old_str
+    );
+    assert!(
+        saw_create,
+        "expected create event for renamed-to {}",
+        new_str
+    );
 }
 
 #[test]
@@ -526,7 +541,9 @@ fn fanotify_watcher_unwatch_is_noop() {
         return;
     }
     // fanotify mount marks are not removed per-path; unwatch must not error.
-    watcher.unwatch(dir.path()).expect("unwatch should not error");
+    watcher
+        .unwatch(dir.path())
+        .expect("unwatch should not error");
 }
 
 #[cfg(target_os = "linux")]

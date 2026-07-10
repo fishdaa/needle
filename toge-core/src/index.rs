@@ -281,29 +281,27 @@ impl Index {
 
         // Remove from trigram index.
         for trigram in unique_trigrams(&name_lower) {
-            if let Some(list) = self.trigrams.get_mut(&trigram) {
-                if let Ok(pos) = list.binary_search(&id) {
-                    list.remove(pos);
-                }
+            if let Some(list) = self.trigrams.get_mut(&trigram)
+                && let Ok(pos) = list.binary_search(&id)
+            {
+                list.remove(pos);
             }
         }
 
         // Remove from prefix first-byte bucket.
-        if let Some(&first_byte) = name_lower.first() {
-            if let Some(list) = self.prefix_first_byte.get_mut(&first_byte) {
-                if let Ok(pos) = list.binary_search(&id) {
-                    list.remove(pos);
-                }
-            }
+        if let Some(&first_byte) = name_lower.first()
+            && let Some(list) = self.prefix_first_byte.get_mut(&first_byte)
+            && let Ok(pos) = list.binary_search(&id)
+        {
+            list.remove(pos);
         }
 
         // Remove from by_ext.
-        if !is_dir {
-            if let Some(list) = self.by_ext.get_mut(&ext) {
-                if let Ok(pos) = list.binary_search(&id) {
-                    list.remove(pos);
-                }
-            }
+        if !is_dir
+            && let Some(list) = self.by_ext.get_mut(&ext)
+            && let Ok(pos) = list.binary_search(&id)
+        {
+            list.remove(pos);
         }
 
         let old_last_id = self.entries.len() as u32 - 1;
@@ -320,10 +318,10 @@ impl Index {
                     replace_sorted_id(list, old_last_id, id);
                 }
             }
-            if let Some(&first_byte) = swapped_name_lower.first() {
-                if let Some(list) = self.prefix_first_byte.get_mut(&first_byte) {
-                    replace_sorted_id(list, old_last_id, id);
-                }
+            if let Some(&first_byte) = swapped_name_lower.first()
+                && let Some(list) = self.prefix_first_byte.get_mut(&first_byte)
+            {
+                replace_sorted_id(list, old_last_id, id);
             }
             if !swapped_entry.is_dir {
                 let swapped_ext = swapped_entry.extension().to_string();
@@ -347,20 +345,20 @@ impl Index {
         }
         if let Ok(metadata) = std::fs::metadata(path) {
             entry.size = metadata.len();
-            if let Ok(t) = metadata.modified() {
-                if let Ok(d) = t.duration_since(std::time::UNIX_EPOCH) {
-                    entry.modified = d.as_secs() as i64;
-                }
+            if let Ok(t) = metadata.modified()
+                && let Ok(d) = t.duration_since(std::time::UNIX_EPOCH)
+            {
+                entry.modified = d.as_secs() as i64;
             }
-            if let Ok(t) = metadata.created() {
-                if let Ok(d) = t.duration_since(std::time::UNIX_EPOCH) {
-                    entry.created = d.as_secs() as i64;
-                }
+            if let Ok(t) = metadata.created()
+                && let Ok(d) = t.duration_since(std::time::UNIX_EPOCH)
+            {
+                entry.created = d.as_secs() as i64;
             }
-            if let Ok(t) = metadata.accessed() {
-                if let Ok(d) = t.duration_since(std::time::UNIX_EPOCH) {
-                    entry.accessed = d.as_secs() as i64;
-                }
+            if let Ok(t) = metadata.accessed()
+                && let Ok(d) = t.duration_since(std::time::UNIX_EPOCH)
+            {
+                entry.accessed = d.as_secs() as i64;
             }
         }
         true
@@ -400,17 +398,17 @@ impl Index {
             return (0..self.entries.len() as u32).collect();
         }
 
-        if let Some(first_byte) = prefix_bytes.first() {
-            if let Some(bucket) = self.prefix_first_byte.get(first_byte) {
-                return bucket
-                    .iter()
-                    .filter(|&&id| {
-                        let entry = &self.entries[id as usize];
-                        starts_with_ignore_case(entry.name(), prefix_bytes)
-                    })
-                    .copied()
-                    .collect();
-            }
+        if let Some(first_byte) = prefix_bytes.first()
+            && let Some(bucket) = self.prefix_first_byte.get(first_byte)
+        {
+            return bucket
+                .iter()
+                .filter(|&&id| {
+                    let entry = &self.entries[id as usize];
+                    starts_with_ignore_case(entry.name(), prefix_bytes)
+                })
+                .copied()
+                .collect();
         }
 
         Vec::new()

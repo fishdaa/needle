@@ -1,6 +1,6 @@
 use std::env;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 use toge_core::config::Config;
 
 pub struct AppState {

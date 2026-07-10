@@ -14,15 +14,15 @@ use std::time::{Instant, SystemTime};
 use toge_core::config::Config;
 use toge_core::index::Index;
 use toge_core::ipc::{
-    DaemonStatus, QueryRequest, Request, Response, ResultRow, ResultsResponse, StatusResponse,
-    MAX_IPC_MESSAGE_SIZE,
+    DaemonStatus, MAX_IPC_MESSAGE_SIZE, QueryRequest, Request, Response, ResultRow,
+    ResultsResponse, StatusResponse,
 };
 use toge_core::matcher::match_query;
 use toge_core::query::Query;
-use toge_core::sort::{sort_ids, SortKey};
+use toge_core::sort::{SortKey, sort_ids};
 use toge_core::sys::FsWatcher;
 use toge_core::sys::{FanotifyWatcher, WatchEvent};
-use toge_core::walker::{has_hidden_ancestor_dir, walk, Excludes};
+use toge_core::walker::{Excludes, has_hidden_ancestor_dir, walk};
 
 struct DaemonState {
     index: Index,
@@ -446,11 +446,11 @@ fn apply_highlight_ranges(text: &str, ranges: &mut [(usize, usize)]) -> String {
     ranges.sort_unstable_by_key(|(start, end)| (*start, *end));
     let mut merged = Vec::with_capacity(ranges.len());
     for &(start, end) in ranges.iter() {
-        if let Some((_, last_end)) = merged.last_mut() {
-            if start <= *last_end {
-                *last_end = (*last_end).max(end);
-                continue;
-            }
+        if let Some((_, last_end)) = merged.last_mut()
+            && start <= *last_end
+        {
+            *last_end = (*last_end).max(end);
+            continue;
         }
         merged.push((start, end));
     }
@@ -557,33 +557,28 @@ fn serve(
     let listener = UnixListener::bind(&socket_path)?;
     set_owner_only(&socket_path)?;
 
-    for stream in listener.incoming() {
-        match stream {
-            Ok(mut s) => {
-                if let Err(e) = authorize_peer(&s) {
-                    let _ = write_response(&mut s, &Response::Error(e.to_string()));
-                    continue;
-                }
-                let req = match read_request(&mut s) {
-                    Ok(Some(req)) => req,
-                    Ok(None) => continue,
-                    Err(e) => {
-                        let _ = write_response(&mut s, &Response::Error(e.to_string()));
-                        continue;
-                    }
-                };
-
-                if matches!(req, Request::Quit) {
-                    let _ = write_response(&mut s, &Response::Ok);
-                    break;
-                }
-
-                let resp = handle_request(req, &state_dir, &config, &state);
-
-                let _ = write_response(&mut s, &resp);
-            }
-            Err(_) => {}
+    for mut s in listener.incoming().flatten() {
+        if let Err(e) = authorize_peer(&s) {
+            let _ = write_response(&mut s, &Response::Error(e.to_string()));
+            continue;
         }
+        let req = match read_request(&mut s) {
+            Ok(Some(req)) => req,
+            Ok(None) => continue,
+            Err(e) => {
+                let _ = write_response(&mut s, &Response::Error(e.to_string()));
+                continue;
+            }
+        };
+
+        if matches!(req, Request::Quit) {
+            let _ = write_response(&mut s, &Response::Ok);
+            break;
+        }
+
+        let resp = handle_request(req, &state_dir, &config, &state);
+
+        let _ = write_response(&mut s, &resp);
     }
 
     let _ = fs::remove_file(&socket_path);

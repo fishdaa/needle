@@ -1,6 +1,6 @@
 //! Index persistence: save/load binary format.
 
-use crate::index::{fnv1a_64, lowered_bytes, unique_trigrams, Entry, Index};
+use crate::index::{Entry, Index, fnv1a_64, lowered_bytes, unique_trigrams};
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Read, Write};

@@ -1,7 +1,7 @@
 use crate::ipc_client;
 use crate::keyboard::{
-    apply_settings_to_config, default_keyboard_settings, settings_from_config,
-    KeyboardSettingsPayload,
+    KeyboardSettingsPayload, apply_settings_to_config, default_keyboard_settings,
+    settings_from_config,
 };
 use crate::state::AppState;
 use std::fs;
@@ -66,16 +66,16 @@ pub async fn search_query(
     let max = max_results.unwrap_or(10_000);
 
     tauri::async_runtime::spawn_blocking(move || {
-        let size_indexed =
-            Config::load(&config_path).unwrap_or_else(|_| Config::default_config()).index_size;
+        let size_indexed = Config::load(&config_path)
+            .unwrap_or_else(|_| Config::default_config())
+            .index_size;
         let (event_tx, _event_rx) = mpsc::channel();
 
         ipc_client::ensure_daemon_running(&socket).map_err(|e| e.to_string())?;
         ipc_client::wait_for_ready(&socket, Duration::from_secs(30), &event_tx)
             .map_err(|e| e.to_string())?;
 
-        let response =
-            ipc_client::query(&socket, id, &query, max, 0).map_err(|e| e.to_string())?;
+        let response = ipc_client::query(&socket, id, &query, max, 0).map_err(|e| e.to_string())?;
 
         let rows: Vec<ResultRow> = response
             .rows
@@ -158,7 +158,9 @@ pub fn reindex_index(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn get_keyboard_settings(state: State<'_, AppState>) -> Result<KeyboardSettingsPayload, String> {
+pub fn get_keyboard_settings(
+    state: State<'_, AppState>,
+) -> Result<KeyboardSettingsPayload, String> {
     let config = state.load_config();
     Ok(settings_from_config(&config))
 }
@@ -196,7 +198,8 @@ pub fn run_watcher_self_test() -> Result<WatcherSelfTestResult, String> {
 
     #[cfg(target_os = "linux")]
     {
-        let mut watcher = FanotifyWatcher::new().map_err(|e| format!("watcher init failed: {}", e))?;
+        let mut watcher =
+            FanotifyWatcher::new().map_err(|e| format!("watcher init failed: {}", e))?;
 
         let test_dir = make_watcher_test_dir().map_err(|e| format!("temp dir failed: {}", e))?;
         let test_file = test_dir.join("watcher-self-test.mkv");
@@ -222,7 +225,10 @@ pub fn run_watcher_self_test() -> Result<WatcherSelfTestResult, String> {
             for event in create_events.into_iter().chain(delete_events) {
                 event_lines.push(format_watch_event(&event));
                 match event {
-                    WatchEvent::Create { path, is_dir: false } if path == test_file_str => {
+                    WatchEvent::Create {
+                        path,
+                        is_dir: false,
+                    } if path == test_file_str => {
                         saw_create = true;
                     }
                     WatchEvent::Delete { path } if path == test_file_str => {
@@ -374,7 +380,7 @@ pub(crate) fn create_new_main_window_internal(
         format!("main-{}", state.next_window_id())
     };
 
-    build_main_window(&app, &label)?;
+    build_main_window(app, &label)?;
     Ok(label)
 }
 
@@ -402,7 +408,7 @@ pub(crate) fn show_main_window_internal(
     } else {
         format!("main-{}", state.next_window_id())
     };
-    build_main_window(&app, &label)?;
+    build_main_window(app, &label)?;
     Ok(label)
 }
 
@@ -428,7 +434,7 @@ pub(crate) fn toggle_main_window_internal(
         }
     }
 
-    if let Some(window) = first_main_window(&app) {
+    if let Some(window) = first_main_window(app) {
         window.show().map_err(|e| e.to_string())?;
         window.unminimize().map_err(|e| e.to_string())?;
         window.set_focus().map_err(|e| e.to_string())?;
@@ -440,7 +446,7 @@ pub(crate) fn toggle_main_window_internal(
     } else {
         format!("main-{}", state.next_window_id())
     };
-    build_main_window(&app, &label)?;
+    build_main_window(app, &label)?;
     Ok(label)
 }
 

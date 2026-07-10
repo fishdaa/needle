@@ -17,9 +17,8 @@ pub fn initialize(app: &AppHandle) -> Result<(), String> {
 
     let show_item = MenuItem::with_id(app, TRAY_SHOW, "Show Window", true, None::<&str>)
         .map_err(|e| e.to_string())?;
-    let new_window_item =
-        MenuItem::with_id(app, TRAY_NEW_WINDOW, "New Window", true, None::<&str>)
-            .map_err(|e| e.to_string())?;
+    let new_window_item = MenuItem::with_id(app, TRAY_NEW_WINDOW, "New Window", true, None::<&str>)
+        .map_err(|e| e.to_string())?;
     let toggle_item = MenuItem::with_id(app, TRAY_TOGGLE, "Toggle Window", true, None::<&str>)
         .map_err(|e| e.to_string())?;
     let options_item = MenuItem::with_id(app, TRAY_OPTIONS, "Options...", true, None::<&str>)

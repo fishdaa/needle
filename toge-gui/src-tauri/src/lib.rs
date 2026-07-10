@@ -7,18 +7,16 @@ pub mod keyboard;
 pub mod state;
 pub mod tray;
 
-use std::io;
 use state::AppState;
+use std::io;
 use tauri::WindowEvent;
 
 pub fn run() {
     tauri::Builder::default()
         .manage(AppState::new())
         .setup(|app| {
-            crate::tray::initialize(&app.handle())
-                .map_err(io::Error::other)?;
-            crate::global_hotkeys::initialize(&app.handle())
-                .map_err(io::Error::other)?;
+            crate::tray::initialize(app.handle()).map_err(io::Error::other)?;
+            crate::global_hotkeys::initialize(app.handle()).map_err(io::Error::other)?;
             Ok(())
         })
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())

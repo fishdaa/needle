@@ -115,20 +115,19 @@ pub fn normalize_and_validate(
 
     let mut seen = HashMap::<String, Vec<ShortcutOwner>>::new();
     for shortcut in &payload.command_shortcuts {
-        if let Some(existing_shortcuts) = seen.get(&shortcut.accelerator) {
-            if let Some(existing) = existing_shortcuts
+        if let Some(existing_shortcuts) = seen.get(&shortcut.accelerator)
+            && let Some(existing) = existing_shortcuts
                 .iter()
                 .find(|existing| scopes_conflict(&existing.scope, &shortcut.scope))
-            {
-                return Err(format!(
-                    "shortcut conflict: {} for {} ({}) is already used by {} ({})",
-                    shortcut.accelerator,
-                    shortcut.command_id,
-                    scope_label(&shortcut.scope),
-                    existing.command_id,
-                    scope_label(&existing.scope),
-                ));
-            }
+        {
+            return Err(format!(
+                "shortcut conflict: {} for {} ({}) is already used by {} ({})",
+                shortcut.accelerator,
+                shortcut.command_id,
+                scope_label(&shortcut.scope),
+                existing.command_id,
+                scope_label(&existing.scope),
+            ));
         }
 
         seen.entry(shortcut.accelerator.clone())
@@ -185,7 +184,10 @@ pub fn normalize_accelerator(value: &str) -> Result<String, String> {
             "meta" | "cmd" | "command" | "super" => meta = true,
             _ => {
                 if key.is_some() {
-                    return Err(format!("accelerator must contain exactly one key: {}", value));
+                    return Err(format!(
+                        "accelerator must contain exactly one key: {}",
+                        value
+                    ));
                 }
                 key = Some(normalize_key(part)?);
             }
@@ -227,9 +229,7 @@ fn normalize_key(value: &str) -> Result<String, String> {
         "comma" | "," => "Comma".to_string(),
         "tab" => "Tab".to_string(),
         other if other.len() == 1 => other.to_ascii_uppercase(),
-        other if other.starts_with('f')
-            && other[1..].chars().all(|c| c.is_ascii_digit()) =>
-        {
+        other if other.starts_with('f') && other[1..].chars().all(|c| c.is_ascii_digit()) => {
             format!("F{}", &other[1..])
         }
         "mediatrackprevious" => "MediaTrackPrevious".to_string(),
@@ -322,7 +322,10 @@ mod tests {
 
     #[test]
     fn normalizes_accelerators() {
-        assert_eq!(normalize_accelerator("ctrl+shift+n").unwrap(), "Ctrl+Shift+N");
+        assert_eq!(
+            normalize_accelerator("ctrl+shift+n").unwrap(),
+            "Ctrl+Shift+N"
+        );
         assert_eq!(normalize_accelerator("period").unwrap(), "Period");
         assert_eq!(normalize_accelerator(" ").unwrap(), "");
     }

@@ -70,7 +70,7 @@ fn wait_for_ready(sock: &Path, timeout_ms: u64) -> bool {
             send_request(&mut s, &Request::Status);
             match read_response(&mut s) {
                 Response::Status(st) if st.status == toge_core::ipc::DaemonStatus::Ready => {
-                    return true
+                    return true;
                 }
                 _ => {}
             }

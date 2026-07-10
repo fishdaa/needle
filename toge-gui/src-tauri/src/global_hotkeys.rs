@@ -24,9 +24,15 @@ pub fn register_window_hotkeys(
     manager.unregister_all().map_err(|e| e.to_string())?;
 
     for (action, accelerator) in [
-        (WindowHotkeyAction::NewWindow, settings.new_window_hotkey.as_str()),
-        (WindowHotkeyAction::ShowWindow, settings.show_window_hotkey.as_str()),
-        (WindowHotkeyAction::ToggleWindow, settings.toggle_window_hotkey.as_str()),
+        (WindowHotkeyAction::New, settings.new_window_hotkey.as_str()),
+        (
+            WindowHotkeyAction::Show,
+            settings.show_window_hotkey.as_str(),
+        ),
+        (
+            WindowHotkeyAction::Toggle,
+            settings.toggle_window_hotkey.as_str(),
+        ),
     ] {
         if accelerator.is_empty() {
             continue;
@@ -58,25 +64,25 @@ fn handle_shortcut_event(app: &AppHandle, action: WindowHotkeyAction, event: Sho
     }
 
     let _ = match action {
-        WindowHotkeyAction::NewWindow => commands::create_new_main_window_internal(app, &state),
-        WindowHotkeyAction::ShowWindow => commands::show_main_window_internal(app, &state),
-        WindowHotkeyAction::ToggleWindow => commands::toggle_main_window_internal(app, &state),
+        WindowHotkeyAction::New => commands::create_new_main_window_internal(app, &state),
+        WindowHotkeyAction::Show => commands::show_main_window_internal(app, &state),
+        WindowHotkeyAction::Toggle => commands::toggle_main_window_internal(app, &state),
     };
 }
 
 #[derive(Clone, Copy, Debug)]
 enum WindowHotkeyAction {
-    NewWindow,
-    ShowWindow,
-    ToggleWindow,
+    New,
+    Show,
+    Toggle,
 }
 
 impl WindowHotkeyAction {
     fn mask(self) -> u8 {
         match self {
-            Self::NewWindow => 0b001,
-            Self::ShowWindow => 0b010,
-            Self::ToggleWindow => 0b100,
+            Self::New => 0b001,
+            Self::Show => 0b010,
+            Self::Toggle => 0b100,
         }
     }
 }
