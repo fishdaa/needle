@@ -1,7 +1,7 @@
 use crate::{
     apply_highlight_ranges, canonical_starts_with, discover_roots, ensure_private_dir, handle_request,
-    highlight_path, is_ignored_path, is_own_path, is_within_roots, term_needles, DaemonState,
-    WatcherStatus,
+    highlight_path, is_ignored_path, is_own_path, is_within_roots, status_response, term_needles,
+    DaemonState, WatcherStatus,
 };
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -53,6 +53,7 @@ fn query_before_ready_returns_not_ready_error() {
         status: DaemonStatus::Starting,
         status_message: String::new(),
         build_duration_ms: 0,
+        last_updated_unix: 0,
         watcher: WatcherStatus::default(),
         watcher_log: Vec::new(),
     }));
@@ -72,6 +73,22 @@ fn query_before_ready_returns_not_ready_error() {
     );
 
     assert_eq!(resp, Response::Error("daemon not ready".into()));
+}
+
+#[test]
+fn status_response_uses_the_last_real_index_update_time() {
+    let state = DaemonState {
+        index: Index::new(),
+        status: DaemonStatus::Ready,
+        status_message: String::new(),
+        build_duration_ms: 0,
+        last_updated_unix: 1_700_000_000,
+        watcher: WatcherStatus::default(),
+        watcher_log: Vec::new(),
+    };
+
+    assert_eq!(status_response(&state).last_updated_unix, 1_700_000_000);
+    assert_eq!(status_response(&state).last_updated_unix, 1_700_000_000);
 }
 
 #[test]

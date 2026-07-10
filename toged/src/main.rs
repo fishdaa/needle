@@ -29,6 +29,7 @@ struct DaemonState {
     status: DaemonStatus,
     status_message: String,
     build_duration_ms: u64,
+    last_updated_unix: i64,
     watcher: WatcherStatus,
     watcher_log: Vec<String>,
 }
@@ -45,6 +46,7 @@ const WATCHER_LOG_LIMIT: usize = 50;
 
 fn append_watcher_log(st: &mut DaemonState, message: impl Into<String>) {
     let timestamp = current_unix_time();
+    st.last_updated_unix = timestamp;
     st.watcher_log
         .push(format!("[{}] {}", timestamp, message.into()));
     if st.watcher_log.len() > WATCHER_LOG_LIMIT {
@@ -264,7 +266,7 @@ fn status_response(st: &DaemonState) -> StatusResponse {
         watch_failure_count: st.watcher.watch_failure_count,
         watch_overflow_count: st.watcher.watch_overflow_count,
         watcher_log: st.watcher_log.clone(),
-        last_updated_unix: current_unix_time(),
+        last_updated_unix: st.last_updated_unix,
         build_duration_ms: st.build_duration_ms,
     }
 }
@@ -324,6 +326,7 @@ fn handle_request(
             let mut st = state.lock().unwrap();
             st.index = new_index;
             st.build_duration_ms = duration;
+            st.last_updated_unix = current_unix_time();
             st.status = DaemonStatus::Ready;
             st.status_message = format!("Indexed {} entries", st.index.count());
             Response::Ok
@@ -633,6 +636,7 @@ fn main() {
         status: DaemonStatus::Starting,
         status_message: "Initializing daemon".to_string(),
         build_duration_ms: 0,
+        last_updated_unix: 0,
         watcher: WatcherStatus::default(),
         watcher_log: Vec::new(),
     }));
@@ -666,6 +670,7 @@ fn main() {
         let mut st = index_state.lock().unwrap();
         st.index = index;
         st.build_duration_ms = duration;
+        st.last_updated_unix = current_unix_time();
         st.status = DaemonStatus::StartingWatcher;
         st.status_message = "Setting up file watcher".to_string();
         st.status = DaemonStatus::Ready;
@@ -683,6 +688,7 @@ fn main() {
         let mut st = state.lock().unwrap();
         st.index = index;
         st.build_duration_ms = duration;
+        st.last_updated_unix = current_unix_time();
         st.status = DaemonStatus::StartingWatcher;
         st.status_message = "Setting up file watcher".to_string();
         st.status = DaemonStatus::Ready;
