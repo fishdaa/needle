@@ -1,3 +1,3 @@
-### Fixed
+### Changed
 
-- chore(release): update version to 0.1.8 and adjust release workflow (#14)
+- chore(deps): Bump regex from 1.12.4 to 1.13.0 (#19)
