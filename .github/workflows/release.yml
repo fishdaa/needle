@@ -63,6 +63,9 @@ jobs:
 
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
+        with:
+          # Cached host tools may have been linked against a newer runner GLIBC.
+          cache-targets: false
 
       - name: Verify tag matches workspace version
         run: scripts/release/verify-tag.sh "${{ inputs.tag || github.ref_name }}"
