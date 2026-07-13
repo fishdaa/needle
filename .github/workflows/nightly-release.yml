@@ -78,7 +78,7 @@ jobs:
       - name: Package nightly artifacts
         run: scripts/release/package-artifacts.sh "${{ steps.nightly.outputs.version }}" nightly
 
-      - name: Package nightly Linux GUI
+      - name: Package nightly Linux GUI (DEB, RPM, AppImage)
         run: scripts/release/package-gui-artifacts.sh "${{ steps.nightly.outputs.version }}"
 
       - name: Move rolling nightly tag
