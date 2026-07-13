@@ -52,6 +52,9 @@ jobs:
 
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
+        with:
+          # Keep release artifacts native to this runner image and GLIBC.
+          cache-targets: false
 
       - name: Set package version
         env:

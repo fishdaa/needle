@@ -62,6 +62,9 @@ jobs:
 
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
+        with:
+          # Cached host tools may have been linked against a newer runner GLIBC.
+          cache-targets: false
 
       - name: Compute beta tag
         id: beta
