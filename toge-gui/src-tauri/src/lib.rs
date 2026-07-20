@@ -15,6 +15,11 @@ pub fn run() {
     tauri::Builder::default()
         .manage(AppState::new())
         .setup(|app| {
+            #[cfg(desktop)]
+            app.handle().plugin(tauri_plugin_autostart::init(
+                tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+                Some(vec!["--startup"]),
+            ))?;
             crate::tray::initialize(app.handle()).map_err(io::Error::other)?;
             crate::global_hotkeys::initialize(app.handle()).map_err(io::Error::other)?;
             Ok(())
@@ -45,6 +50,8 @@ pub fn run() {
             commands::get_keyboard_settings,
             commands::save_keyboard_settings,
             commands::restore_default_keyboard_settings,
+            commands::is_autostart_enabled,
+            commands::set_autostart_enabled,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
