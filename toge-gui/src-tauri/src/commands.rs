@@ -56,8 +56,31 @@ pub struct WatcherSelfTestResult {
 
 #[tauri::command]
 pub fn window_ready(window: tauri::Window) -> Result<(), String> {
+    let state = window.app_handle().state::<AppState>();
+    if state.started_automatically() && window.label() == "main" {
+        return Ok(());
+    }
     window.show().map_err(|e| e.to_string())?;
     window.set_focus().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn is_autostart_enabled(app: tauri::AppHandle) -> Result<bool, String> {
+    use tauri_plugin_autostart::ManagerExt;
+
+    app.autolaunch().is_enabled().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_autostart_enabled(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+
+    if enabled {
+        app.autolaunch().enable()
+    } else {
+        app.autolaunch().disable()
+    }
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -109,26 +132,32 @@ pub async fn search_query(
 }
 
 #[tauri::command]
-pub fn get_status(state: State<'_, AppState>) -> Result<StatusResult, String> {
+pub async fn get_status(state: State<'_, AppState>) -> Result<StatusResult, String> {
     let socket = state.socket_path();
-    let config = state.load_config();
+    let config_path = state.config_path();
 
-    ipc_client::ensure_daemon_running(&socket).map_err(|e| e.to_string())?;
-    let status = ipc_client::status(&socket).map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let config = Config::load(&config_path).unwrap_or_else(|_| Config::default_config());
 
-    Ok(StatusResult {
-        indexed_count: status.indexed_count as u64,
-        status: format!("{:?}", status.status),
-        status_message: status.status_message,
-        size_indexed: config.index_size,
-        watcher_healthy: status.watcher_healthy,
-        watched_dir_count: status.watched_dir_count as u64,
-        watch_failure_count: status.watch_failure_count as u64,
-        watch_overflow_count: status.watch_overflow_count,
-        watcher_log: status.watcher_log,
-        last_updated_unix: status.last_updated_unix,
-        build_duration_ms: status.build_duration_ms,
+        ipc_client::ensure_daemon_running(&socket).map_err(|e| e.to_string())?;
+        let status = ipc_client::status(&socket).map_err(|e| e.to_string())?;
+
+        Ok(StatusResult {
+            indexed_count: status.indexed_count as u64,
+            status: format!("{:?}", status.status),
+            status_message: status.status_message,
+            size_indexed: config.index_size,
+            watcher_healthy: status.watcher_healthy,
+            watched_dir_count: status.watched_dir_count as u64,
+            watch_failure_count: status.watch_failure_count as u64,
+            watch_overflow_count: status.watch_overflow_count,
+            watcher_log: status.watcher_log,
+            last_updated_unix: status.last_updated_unix,
+            build_duration_ms: status.build_duration_ms,
+        })
     })
+    .await
+    .map_err(|e| format!("status worker failed: {e}"))?
 }
 
 #[tauri::command]
@@ -435,19 +464,8 @@ pub(crate) fn toggle_main_window_internal(
     for window in app.webview_windows().values() {
         if is_main_window_label(window.label()) {
             let is_visible = window.is_visible().map_err(|e| e.to_string())?;
-            let is_focused = window.is_focused().map_err(|e| e.to_string())?;
-            if is_visible && is_focused {
-                window.hide().map_err(|e| e.to_string())?;
-                return Ok(window.label().to_string());
-            }
             if is_visible {
-                // KDE Plasma may reject a focus request for an already-mapped
-                // window. Remapping it gives the compositor a fresh window
-                // activation to place in front.
                 window.hide().map_err(|e| e.to_string())?;
-                window.show().map_err(|e| e.to_string())?;
-                window.unminimize().map_err(|e| e.to_string())?;
-                focus_after_remap(window.clone());
                 return Ok(window.label().to_string());
             }
         }
@@ -507,16 +525,6 @@ fn build_main_window(app: &tauri::AppHandle, label: &str) -> Result<(), String> 
         .map_err(|e| e.to_string())?;
 
     Ok(())
-}
-
-fn focus_after_remap(window: tauri::WebviewWindow) {
-    thread::spawn(move || {
-        thread::sleep(Duration::from_millis(50));
-        let focus_window = window.clone();
-        let _ = window.run_on_main_thread(move || {
-            let _ = focus_window.set_focus();
-        });
-    });
 }
 
 fn first_main_window(app: &tauri::AppHandle) -> Option<tauri::WebviewWindow> {

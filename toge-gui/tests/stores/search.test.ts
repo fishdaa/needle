@@ -161,6 +161,33 @@ describe('searchStore', () => {
     expect(s.indexStatusText()).toBe('Ready | Indexed 42 entries | 42 indexed')
   })
 
+  it('surfaces a failed fanotify runtime check immediately and only once', async () => {
+    const s = await loadStore()
+    const { invoke } = await import('@tauri-apps/api/core')
+    const warning = 'Live updates unavailable: fanotify setup failed. Reinstall the DEB/RPM package or run `sudo setcap cap_sys_admin,cap_dac_read_search+ep /usr/bin/toged`, then restart Toge.'
+    const failedStatus = {
+      status: 'Ready',
+      status_message: warning,
+      indexed_count: 42,
+      size_indexed: false,
+      watcher_healthy: false,
+      watched_dir_count: 0,
+      watch_failure_count: 1,
+      watch_overflow_count: 0,
+      watcher_log: [`[1700000000] ${warning}`],
+      last_updated_unix: 1700000000,
+      build_duration_ms: 15
+    }
+    vi.mocked(invoke).mockResolvedValue(failedStatus)
+
+    await s.fetchStatus()
+    await s.fetchStatus()
+
+    expect(s.state.error).toBe(warning)
+    expect(s.indexStatusText()).toBe('Live updates unavailable | 42 indexed')
+    expect(s.state.diagnosticsLog.filter((entry) => entry.endsWith(warning))).toHaveLength(1)
+  })
+
   it('copies the diagnostics log as a single payload', async () => {
     const s = await loadStore()
     const { invoke } = await import('@tauri-apps/api/core')

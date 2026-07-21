@@ -43,6 +43,7 @@ struct WatcherStatus {
 }
 
 const WATCHER_LOG_LIMIT: usize = 50;
+const WATCHER_REMEDIATION: &str = "Live updates unavailable: fanotify setup failed. Reinstall the DEB/RPM package or run `sudo setcap cap_sys_admin,cap_dac_read_search+ep /usr/bin/toged`, then restart Toge.";
 
 fn append_watcher_log(st: &mut DaemonState, message: impl Into<String>) {
     let timestamp = current_unix_time();
@@ -258,6 +259,57 @@ fn metadata_snapshot(path: &str) -> (u64, i64, i64, i64) {
     )
 }
 
+fn index_created_path(st: &mut DaemonState, path: &str, is_dir: bool, config: &Config) {
+    let (size, modified, created, accessed) = metadata_snapshot(path);
+    st.index
+        .insert_with_metadata(path, is_dir, size, modified, created, accessed);
+
+    if is_dir {
+        let excludes = Excludes {
+            skip_hidden: config.exclude_hidden,
+            skip_system_paths: true,
+            patterns: config.exclude_patterns.clone(),
+            folders: config.exclude_folders.clone(),
+            paths: Vec::new(),
+            include_only: config.include_only.clone(),
+        };
+        walk(
+            Path::new(path),
+            &mut st.index,
+            &excludes,
+            config.index_size
+                || config.index_date_modified
+                || config.index_date_created
+                || config.index_date_accessed,
+        );
+    }
+}
+
+fn remove_deleted_path(index: &mut Index, path: &str) {
+    let deleted = Path::new(path);
+    let paths: Vec<String> = index
+        .entries
+        .iter()
+        .filter(|entry| Path::new(&entry.path).starts_with(deleted))
+        .map(|entry| entry.path.clone())
+        .collect();
+    for path in paths {
+        index.remove(&path);
+    }
+}
+
+fn mark_watcher_unavailable(state: &Arc<Mutex<DaemonState>>, detail: &str) {
+    let mut st = state.lock().unwrap();
+    st.watcher.is_healthy = false;
+    st.watcher.watch_failure_count = st.watcher.watch_failure_count.max(1);
+    st.status = DaemonStatus::Ready;
+    st.status_message = WATCHER_REMEDIATION.to_string();
+    append_watcher_log(
+        &mut st,
+        format!("fanotify setup failed: {detail}; {WATCHER_REMEDIATION}"),
+    );
+}
+
 fn status_response(st: &DaemonState) -> StatusResponse {
     StatusResponse {
         indexed_count: st.index.count(),
@@ -283,15 +335,13 @@ fn install_watches(watcher: &mut FanotifyWatcher, dirs: &[PathBuf]) -> WatcherSt
     for dir in dirs {
         match watcher.watch(dir) {
             Ok(()) => {}
-            Err(e)
-                if e.kind() == io::ErrorKind::PermissionDenied
-                    || e.kind() == io::ErrorKind::NotFound
-                    || e.raw_os_error() == Some(28) =>
-            {
+            Err(error) => {
                 watcher_status.watch_failure_count += 1;
-            }
-            Err(_) => {
-                watcher_status.watch_failure_count += 1;
+                eprintln!(
+                    "Failed to install fanotify filesystem watch for {}: {}",
+                    dir.display(),
+                    error
+                );
             }
         }
     }
@@ -670,8 +720,6 @@ fn main() {
         st.last_updated_unix = current_unix_time();
         st.status = DaemonStatus::StartingWatcher;
         st.status_message = "Setting up file watcher".to_string();
-        st.status = DaemonStatus::Ready;
-        st.status_message = format!("Indexed {} entries in {}ms", st.index.count(), duration);
     });
 
     if let Err(err) = spawn_result {
@@ -688,8 +736,6 @@ fn main() {
         st.last_updated_unix = current_unix_time();
         st.status = DaemonStatus::StartingWatcher;
         st.status_message = "Setting up file watcher".to_string();
-        st.status = DaemonStatus::Ready;
-        st.status_message = format!("Indexed {} entries in {}ms", st.index.count(), duration);
     }
 
     let watcher_state = Arc::clone(&state);
@@ -712,13 +758,14 @@ fn start_watcher(
     config_dir: PathBuf,
     config: Config,
 ) {
-    thread::Builder::new()
+    let spawn_failure_state = Arc::clone(&state);
+    let spawn_result = thread::Builder::new()
         .name("fanotify-watcher".into())
         .spawn(move || {
             loop {
                 {
                     let st = state.lock().unwrap();
-                    if st.status == DaemonStatus::Ready {
+                    if st.status == DaemonStatus::StartingWatcher {
                         break;
                     }
                 }
@@ -726,19 +773,32 @@ fn start_watcher(
             }
 
             let mut watcher = match FanotifyWatcher::new() {
-                Ok(w) => w,
+                Ok(watcher) => watcher,
                 Err(e) => {
                     eprintln!("Failed to create fanotify watcher: {}", e);
+                    mark_watcher_unavailable(&state, &format!("initialization error: {e}"));
                     return;
                 }
             };
 
             let dirs = discover_roots(&config);
-
             let watcher_status = install_watches(&mut watcher, &dirs);
             {
                 let mut st = state.lock().unwrap();
                 st.watcher = watcher_status;
+                if st.watcher.is_healthy {
+                    st.status = DaemonStatus::Ready;
+                    st.status_message = format!(
+                        "Indexed {} entries in {}ms",
+                        st.index.count(),
+                        st.build_duration_ms
+                    );
+                    append_watcher_log(&mut st, "using fanotify filesystem watcher");
+                } else {
+                    st.status = DaemonStatus::Ready;
+                    st.status_message = WATCHER_REMEDIATION.to_string();
+                    append_watcher_log(&mut st, WATCHER_REMEDIATION);
+                }
             }
 
             loop {
@@ -776,15 +836,7 @@ fn start_watcher(
                                     &mut st,
                                     format!("create {}{}", path, if *is_dir { " (dir)" } else { "" }),
                                 );
-                                let (size, modified, created, accessed) = metadata_snapshot(path);
-                                st.index.insert_with_metadata(
-                                    path,
-                                    *is_dir,
-                                    size,
-                                    modified,
-                                    created,
-                                    accessed,
-                                );
+                                index_created_path(&mut st, path, *is_dir, &config);
                             }
                             WatchEvent::Delete { path } => {
                                 if !is_within_roots(path, &dirs) {
@@ -794,7 +846,8 @@ fn start_watcher(
                                     continue;
                                 }
                                 append_watcher_log(&mut st, format!("delete {}", path));
-                                st.index.remove(path);
+                                remove_deleted_path(&mut st.index, path);
+                                let _ = watcher.unwatch(Path::new(path));
                             }
                             WatchEvent::Modify { path } => {
                                 if !is_within_roots(path, &dirs) {
@@ -823,19 +876,12 @@ fn start_watcher(
                                     );
                                 append_watcher_log(&mut st, format!("move {} -> {}", from, to));
                                 if from_in_roots && !from_ignored {
-                                    st.index.remove(from);
+                                    remove_deleted_path(&mut st.index, from);
+                                    let _ = watcher.unwatch(Path::new(from));
                                 }
                                 if to_in_roots && !to_ignored {
                                     let is_dir = std::path::Path::new(to).is_dir();
-                                    let (size, modified, created, accessed) = metadata_snapshot(to);
-                                    st.index.insert_with_metadata(
-                                        to,
-                                        is_dir,
-                                        size,
-                                        modified,
-                                        created,
-                                        accessed,
-                                    );
+                                    index_created_path(&mut st, to, is_dir, &config);
                                 }
                             }
                             WatchEvent::Overflow { .. } => {
@@ -859,7 +905,6 @@ fn start_watcher(
                     let _ = fs::remove_file(state_dir.join("index.bin"));
                     let (new_index, duration) = build_index(&state_dir, &config, &state);
                     let _ = save_index(&new_index, &state_dir);
-                    let dirs = discover_roots(&config);
                     let watcher_status = install_watches(&mut watcher, &dirs);
                     {
                         let mut st = state.lock().unwrap();
@@ -872,8 +917,15 @@ fn start_watcher(
                     }
                 }
             }
-        })
-        .ok();
+        });
+
+    if let Err(error) = spawn_result {
+        eprintln!("Failed to spawn fanotify watcher thread: {error}");
+        mark_watcher_unavailable(
+            &spawn_failure_state,
+            &format!("thread spawn error: {error}"),
+        );
+    }
 }
 
 #[cfg(test)]
