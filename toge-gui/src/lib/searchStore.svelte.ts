@@ -96,6 +96,10 @@ export function indexStatusText() {
   if (!state.daemonStatus) return 'Index unavailable'
 
   const count = `${state.daemonStatus.indexed_count.toLocaleString()} indexed`
+  if (!state.daemonStatus.watcher_healthy && state.daemonStatus.watch_failure_count > 0) {
+    return `Live updates unavailable | ${count}`
+  }
+
   const status = state.daemonStatus.status
   const message = state.daemonStatus.status_message?.trim()
 
@@ -156,6 +160,7 @@ const SEARCH_DEBOUNCE_MS = 120
 
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
 let latestSearchRequestId = 0
+let watcherWarningActive = false
 // The daemon serves queries serially, so keep one IPC request active and
 // replace any queued request with the newest input.
 let pendingSearch: PendingSearch | null = null
@@ -407,6 +412,17 @@ export async function fetchStatus() {
     const previousStatus = state.daemonStatus
     const status = await invoke<StatusResponse>('get_status')
     state.daemonStatus = status
+
+    const watcherFailed = !status.watcher_healthy && status.watch_failure_count > 0
+    if (watcherFailed && !watcherWarningActive) {
+      const warning = status.status_message.startsWith('Live updates unavailable:')
+        ? status.status_message
+        : 'Live updates unavailable: fanotify setup failed. Reinstall the DEB/RPM package or restore the required capabilities, then restart Toge.'
+      state.error = warning
+      appendDiagnostics(warning)
+    }
+    watcherWarningActive = watcherFailed
+
     if (shouldRefreshActiveSearch(previousStatus, status) || !previousStatus) {
       appendDiagnostics(`Status refreshed: ${status.status}`)
     }

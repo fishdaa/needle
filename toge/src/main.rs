@@ -276,6 +276,11 @@ fn main() {
                     s.watch_overflow_count,
                     s.build_duration_ms
                 );
+                if !s.watcher_healthy && s.watch_failure_count > 0 {
+                    eprintln!(
+                        "warning: live updates are unavailable because fanotify setup failed. Reinstall the DEB/RPM package or run `sudo setcap cap_sys_admin,cap_dac_read_search+ep /usr/bin/toged`, then restart Toge."
+                    );
+                }
             }
             Ok(_) => eprintln!("unexpected response"),
             Err(e) => {

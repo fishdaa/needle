@@ -65,6 +65,11 @@ pub fn settings_from_config(config: &Config) -> KeyboardSettingsPayload {
         settings.command_shortcuts = defaults.command_shortcuts;
     }
 
+    // Window hotkeys are registered system-wide and therefore take precedence
+    // over renderer command shortcuts in every scope. Older configurations
+    // could contain both, causing one key press to dispatch two actions.
+    remove_command_shortcuts_claimed_by_window_hotkeys(&mut settings);
+
     settings
 }
 
@@ -161,7 +166,22 @@ pub fn normalize_and_validate(
         }
     }
 
+    remove_command_shortcuts_claimed_by_window_hotkeys(&mut payload);
+
     Ok(payload)
+}
+
+fn remove_command_shortcuts_claimed_by_window_hotkeys(payload: &mut KeyboardSettingsPayload) {
+    let window_hotkeys = [
+        payload.new_window_hotkey.clone(),
+        payload.show_window_hotkey.clone(),
+        payload.toggle_window_hotkey.clone(),
+    ];
+    payload.command_shortcuts.retain(|shortcut| {
+        !window_hotkeys
+            .iter()
+            .any(|hotkey| !hotkey.is_empty() && hotkey == &shortcut.accelerator)
+    });
 }
 
 pub fn normalize_accelerator(value: &str) -> Result<String, String> {
@@ -415,5 +435,37 @@ mod tests {
                 && shortcut.scope == "result_list"
                 && shortcut.accelerator == "Enter"
         }));
+    }
+
+    #[test]
+    fn window_hotkeys_replace_conflicting_command_shortcuts() {
+        let mut payload = default_keyboard_settings();
+        payload.toggle_window_hotkey = "Ctrl+Period".to_string();
+
+        let normalized = normalize_and_validate(payload).unwrap();
+
+        assert_eq!(normalized.toggle_window_hotkey, "Ctrl+Period");
+        assert!(
+            !normalized
+                .command_shortcuts
+                .iter()
+                .any(|shortcut| shortcut.accelerator == "Ctrl+Period")
+        );
+    }
+
+    #[test]
+    fn loaded_settings_resolve_legacy_window_hotkey_conflicts() {
+        let mut config = Config::default_config();
+        config.keyboard.toggle_window_hotkey = "Ctrl+Period".to_string();
+        config.keyboard.command_shortcuts = vec![KeyboardShortcutConfig {
+            command_id: "window.open_diagnostics".to_string(),
+            scope: KeyboardScope::Global,
+            accelerator: "Ctrl+Period".to_string(),
+        }];
+
+        let settings = settings_from_config(&config);
+
+        assert_eq!(settings.toggle_window_hotkey, "Ctrl+Period");
+        assert!(settings.command_shortcuts.is_empty());
     }
 }

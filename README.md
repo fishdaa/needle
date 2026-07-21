@@ -80,6 +80,24 @@ npm ci --prefix toge-gui
 make gui-package V=0.1.12
 ```
 
+### GUI Development Profiles
+
+`make gui` keeps its settings separate from an installed Toge instance. Its
+configuration persists under `~/.config/toge-dev/default/toge`, while its
+socket and index are temporary and are removed when the development session
+ends. Assign the development instance a different global shortcut in Options
+to exercise both applications side by side.
+
+Use a named profile when you need another independent set of development
+settings:
+
+```bash
+TOGE_DEV_PROFILE=alternate make gui
+```
+
+Set `TOGE_DEV_CONFIG_ROOT` to override the parent directory for all development
+profiles.
+
 ### Development Checks
 
 ```bash

@@ -28,7 +28,23 @@ cargo build -p toged
 sudo setcap cap_sys_admin,cap_dac_read_search+ep "$SCRIPT_DIR/target/debug/toged"
 
 DEV_RUNTIME_DIR="$(mktemp -d /tmp/toge-gui-dev.XXXXXX)"
+DEV_PROFILE="${TOGE_DEV_PROFILE:-default}"
+case "$DEV_PROFILE" in
+  ""|*[!A-Za-z0-9._-]*)
+    echo "Invalid TOGE_DEV_PROFILE '$DEV_PROFILE' (use letters, numbers, dot, underscore, or dash)." >&2
+    exit 2
+    ;;
+esac
+
+DEV_CONFIG_ROOT="${TOGE_DEV_CONFIG_ROOT:-${XDG_CONFIG_HOME:-$HOME/.config}/toge-dev}"
+export XDG_CONFIG_HOME="$DEV_CONFIG_ROOT/$DEV_PROFILE"
+export XDG_STATE_HOME="$DEV_RUNTIME_DIR/state"
 export TOGE_SOCKET="$DEV_RUNTIME_DIR/toged.sock"
+mkdir -p "$XDG_CONFIG_HOME" "$XDG_STATE_HOME"
+
+echo "Development profile: $DEV_PROFILE"
+echo "Development settings: $XDG_CONFIG_HOME/toge/config.toml"
+echo "Development state: $XDG_STATE_HOME/toge (removed on exit)"
 
 echo "Starting toged for this dev session..."
 "$SCRIPT_DIR/target/debug/toged" --socket "$TOGE_SOCKET" &

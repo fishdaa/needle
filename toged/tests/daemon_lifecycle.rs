@@ -188,6 +188,15 @@ fn daemon_status_returns_entry_count() {
                 "expected at least foo.txt, got {}",
                 s.indexed_count
             );
+            if !s.watcher_healthy {
+                assert!(s.watch_failure_count > 0);
+                assert!(s.status_message.contains("sudo setcap"));
+                assert!(
+                    s.watcher_log
+                        .iter()
+                        .any(|entry| entry.contains("Live updates unavailable"))
+                );
+            }
         }
         other => panic!("expected status, got {:?}", other),
     }
