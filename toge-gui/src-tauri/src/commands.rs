@@ -109,26 +109,32 @@ pub async fn search_query(
 }
 
 #[tauri::command]
-pub fn get_status(state: State<'_, AppState>) -> Result<StatusResult, String> {
+pub async fn get_status(state: State<'_, AppState>) -> Result<StatusResult, String> {
     let socket = state.socket_path();
-    let config = state.load_config();
+    let config_path = state.config_path();
 
-    ipc_client::ensure_daemon_running(&socket).map_err(|e| e.to_string())?;
-    let status = ipc_client::status(&socket).map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let config = Config::load(&config_path).unwrap_or_else(|_| Config::default_config());
 
-    Ok(StatusResult {
-        indexed_count: status.indexed_count as u64,
-        status: format!("{:?}", status.status),
-        status_message: status.status_message,
-        size_indexed: config.index_size,
-        watcher_healthy: status.watcher_healthy,
-        watched_dir_count: status.watched_dir_count as u64,
-        watch_failure_count: status.watch_failure_count as u64,
-        watch_overflow_count: status.watch_overflow_count,
-        watcher_log: status.watcher_log,
-        last_updated_unix: status.last_updated_unix,
-        build_duration_ms: status.build_duration_ms,
+        ipc_client::ensure_daemon_running(&socket).map_err(|e| e.to_string())?;
+        let status = ipc_client::status(&socket).map_err(|e| e.to_string())?;
+
+        Ok(StatusResult {
+            indexed_count: status.indexed_count as u64,
+            status: format!("{:?}", status.status),
+            status_message: status.status_message,
+            size_indexed: config.index_size,
+            watcher_healthy: status.watcher_healthy,
+            watched_dir_count: status.watched_dir_count as u64,
+            watch_failure_count: status.watch_failure_count as u64,
+            watch_overflow_count: status.watch_overflow_count,
+            watcher_log: status.watcher_log,
+            last_updated_unix: status.last_updated_unix,
+            build_duration_ms: status.build_duration_ms,
+        })
     })
+    .await
+    .map_err(|e| format!("status worker failed: {e}"))?
 }
 
 #[tauri::command]
