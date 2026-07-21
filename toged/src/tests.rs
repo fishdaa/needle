@@ -1,7 +1,8 @@
 use crate::{
     DaemonState, WatcherStatus, apply_highlight_ranges, canonical_starts_with, discover_roots,
     ensure_private_dir, handle_request, highlight_path, index_created_path, is_ignored_path,
-    is_own_path, is_within_roots, remove_deleted_path, status_response, term_needles,
+    is_own_path, is_within_roots, mark_watcher_unavailable, remove_deleted_path, status_response,
+    term_needles,
 };
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -66,6 +67,34 @@ fn deleting_directory_removes_indexed_descendants() {
             .is_none()
     );
     assert!(index.id_by_path("/downloads/torrent-2/keep.mkv").is_some());
+}
+
+#[test]
+fn watcher_runtime_failure_marks_daemon_ready_but_degraded() {
+    let state = Arc::new(Mutex::new(DaemonState {
+        index: Index::new(),
+        status: DaemonStatus::StartingWatcher,
+        status_message: "Setting up file watcher".to_string(),
+        build_duration_ms: 0,
+        last_updated_unix: 0,
+        watcher: WatcherStatus::default(),
+        watcher_log: Vec::new(),
+    }));
+
+    mark_watcher_unavailable(&state, "permission denied");
+
+    let state = state.lock().unwrap();
+    assert_eq!(state.status, DaemonStatus::Ready);
+    assert!(!state.watcher.is_healthy);
+    assert_eq!(state.watcher.watch_failure_count, 1);
+    assert!(state.status_message.contains("sudo setcap"));
+    assert!(
+        state
+            .watcher_log
+            .last()
+            .unwrap()
+            .contains("permission denied")
+    );
 }
 
 /// Helper to build and run the daemon binary with given args.

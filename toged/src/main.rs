@@ -43,6 +43,7 @@ struct WatcherStatus {
 }
 
 const WATCHER_LOG_LIMIT: usize = 50;
+const WATCHER_REMEDIATION: &str = "Live updates unavailable: fanotify setup failed. Reinstall the DEB/RPM package or run `sudo setcap cap_sys_admin,cap_dac_read_search+ep /usr/bin/toged`, then restart Toge.";
 
 fn append_watcher_log(st: &mut DaemonState, message: impl Into<String>) {
     let timestamp = current_unix_time();
@@ -295,6 +296,18 @@ fn remove_deleted_path(index: &mut Index, path: &str) {
     for path in paths {
         index.remove(&path);
     }
+}
+
+fn mark_watcher_unavailable(state: &Arc<Mutex<DaemonState>>, detail: &str) {
+    let mut st = state.lock().unwrap();
+    st.watcher.is_healthy = false;
+    st.watcher.watch_failure_count = st.watcher.watch_failure_count.max(1);
+    st.status = DaemonStatus::Ready;
+    st.status_message = WATCHER_REMEDIATION.to_string();
+    append_watcher_log(
+        &mut st,
+        format!("fanotify setup failed: {detail}; {WATCHER_REMEDIATION}"),
+    );
 }
 
 fn status_response(st: &DaemonState) -> StatusResponse {
@@ -707,8 +720,6 @@ fn main() {
         st.last_updated_unix = current_unix_time();
         st.status = DaemonStatus::StartingWatcher;
         st.status_message = "Setting up file watcher".to_string();
-        st.status = DaemonStatus::Ready;
-        st.status_message = format!("Indexed {} entries in {}ms", st.index.count(), duration);
     });
 
     if let Err(err) = spawn_result {
@@ -725,8 +736,6 @@ fn main() {
         st.last_updated_unix = current_unix_time();
         st.status = DaemonStatus::StartingWatcher;
         st.status_message = "Setting up file watcher".to_string();
-        st.status = DaemonStatus::Ready;
-        st.status_message = format!("Indexed {} entries in {}ms", st.index.count(), duration);
     }
 
     let watcher_state = Arc::clone(&state);
@@ -749,13 +758,14 @@ fn start_watcher(
     config_dir: PathBuf,
     config: Config,
 ) {
-    thread::Builder::new()
+    let spawn_failure_state = Arc::clone(&state);
+    let spawn_result = thread::Builder::new()
         .name("fanotify-watcher".into())
         .spawn(move || {
             loop {
                 {
                     let st = state.lock().unwrap();
-                    if st.status == DaemonStatus::Ready {
+                    if st.status == DaemonStatus::StartingWatcher {
                         break;
                     }
                 }
@@ -766,6 +776,7 @@ fn start_watcher(
                 Ok(watcher) => watcher,
                 Err(e) => {
                     eprintln!("Failed to create fanotify watcher: {}", e);
+                    mark_watcher_unavailable(&state, &format!("initialization error: {e}"));
                     return;
                 }
             };
@@ -776,12 +787,17 @@ fn start_watcher(
                 let mut st = state.lock().unwrap();
                 st.watcher = watcher_status;
                 if st.watcher.is_healthy {
+                    st.status = DaemonStatus::Ready;
+                    st.status_message = format!(
+                        "Indexed {} entries in {}ms",
+                        st.index.count(),
+                        st.build_duration_ms
+                    );
                     append_watcher_log(&mut st, "using fanotify filesystem watcher");
                 } else {
-                    append_watcher_log(
-                        &mut st,
-                        "fanotify coverage incomplete; check toged capabilities and watcher failures",
-                    );
+                    st.status = DaemonStatus::Ready;
+                    st.status_message = WATCHER_REMEDIATION.to_string();
+                    append_watcher_log(&mut st, WATCHER_REMEDIATION);
                 }
             }
 
@@ -906,8 +922,15 @@ fn start_watcher(
                     }
                 }
             }
-        })
-        .ok();
+        });
+
+    if let Err(error) = spawn_result {
+        eprintln!("Failed to spawn fanotify watcher thread: {error}");
+        mark_watcher_unavailable(
+            &spawn_failure_state,
+            &format!("thread spawn error: {error}"),
+        );
+    }
 }
 
 #[cfg(test)]

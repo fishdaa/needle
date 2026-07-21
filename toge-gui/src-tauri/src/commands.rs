@@ -458,19 +458,8 @@ pub(crate) fn toggle_main_window_internal(
     for window in app.webview_windows().values() {
         if is_main_window_label(window.label()) {
             let is_visible = window.is_visible().map_err(|e| e.to_string())?;
-            let is_focused = window.is_focused().map_err(|e| e.to_string())?;
-            if is_visible && is_focused {
-                window.hide().map_err(|e| e.to_string())?;
-                return Ok(window.label().to_string());
-            }
             if is_visible {
-                // KDE Plasma may reject a focus request for an already-mapped
-                // window. Remapping it gives the compositor a fresh window
-                // activation to place in front.
                 window.hide().map_err(|e| e.to_string())?;
-                window.show().map_err(|e| e.to_string())?;
-                window.unminimize().map_err(|e| e.to_string())?;
-                focus_after_remap(window.clone());
                 return Ok(window.label().to_string());
             }
         }
@@ -530,16 +519,6 @@ fn build_main_window(app: &tauri::AppHandle, label: &str) -> Result<(), String> 
         .map_err(|e| e.to_string())?;
 
     Ok(())
-}
-
-fn focus_after_remap(window: tauri::WebviewWindow) {
-    thread::spawn(move || {
-        thread::sleep(Duration::from_millis(50));
-        let focus_window = window.clone();
-        let _ = window.run_on_main_thread(move || {
-            let _ = focus_window.set_focus();
-        });
-    });
 }
 
 fn first_main_window(app: &tauri::AppHandle) -> Option<tauri::WebviewWindow> {

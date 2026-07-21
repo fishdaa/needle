@@ -1,11 +1,17 @@
 use crate::commands;
 use crate::keyboard::KeyboardSettingsPayload;
 use crate::state::AppState;
+use std::ffi::OsString;
 use std::str::FromStr;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutEvent, ShortcutState};
 
 pub fn initialize(app: &AppHandle) -> Result<(), String> {
+    if global_hotkeys_disabled(std::env::var_os("TOGE_DISABLE_GLOBAL_HOTKEYS")) {
+        eprintln!("Toge: global shortcuts are disabled by TOGE_DISABLE_GLOBAL_HOTKEYS.");
+        return Ok(());
+    }
+
     let state = app.state::<AppState>();
     let config = state.load_config();
     let settings = crate::keyboard::settings_from_config(&config);
@@ -15,10 +21,23 @@ pub fn initialize(app: &AppHandle) -> Result<(), String> {
     register_window_hotkeys(app, &settings)
 }
 
+fn global_hotkeys_disabled(value: Option<OsString>) -> bool {
+    value.is_some_and(|value| {
+        matches!(
+            value.to_string_lossy().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes"
+        )
+    })
+}
+
 pub fn register_window_hotkeys(
     app: &AppHandle,
     settings: &KeyboardSettingsPayload,
 ) -> Result<(), String> {
+    if global_hotkeys_disabled(std::env::var_os("TOGE_DISABLE_GLOBAL_HOTKEYS")) {
+        return Ok(());
+    }
+
     let manager = app.global_shortcut();
     app.state::<AppState>().reset_window_hotkeys();
     manager.unregister_all().map_err(|e| e.to_string())?;
@@ -84,5 +103,20 @@ impl WindowHotkeyAction {
             Self::Show => 0b010,
             Self::Toggle => 0b100,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::global_hotkeys_disabled;
+    use std::ffi::OsString;
+
+    #[test]
+    fn recognizes_explicit_global_hotkey_disable_values() {
+        assert!(global_hotkeys_disabled(Some(OsString::from("1"))));
+        assert!(global_hotkeys_disabled(Some(OsString::from("TRUE"))));
+        assert!(global_hotkeys_disabled(Some(OsString::from("yes"))));
+        assert!(!global_hotkeys_disabled(Some(OsString::from("0"))));
+        assert!(!global_hotkeys_disabled(None));
     }
 }

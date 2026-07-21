@@ -21,7 +21,11 @@ pub fn run() {
                 Some(vec!["--startup"]),
             ))?;
             crate::tray::initialize(app.handle()).map_err(io::Error::other)?;
-            crate::global_hotkeys::initialize(app.handle()).map_err(io::Error::other)?;
+            if let Err(error) = crate::global_hotkeys::initialize(app.handle()) {
+                eprintln!(
+                    "Toge warning: global shortcuts could not be registered ({error}). The application will continue without them."
+                );
+            }
             Ok(())
         })
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
