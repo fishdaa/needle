@@ -56,8 +56,31 @@ pub struct WatcherSelfTestResult {
 
 #[tauri::command]
 pub fn window_ready(window: tauri::Window) -> Result<(), String> {
+    let state = window.app_handle().state::<AppState>();
+    if state.started_automatically() && window.label() == "main" {
+        return Ok(());
+    }
     window.show().map_err(|e| e.to_string())?;
     window.set_focus().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn is_autostart_enabled(app: tauri::AppHandle) -> Result<bool, String> {
+    use tauri_plugin_autostart::ManagerExt;
+
+    app.autolaunch().is_enabled().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_autostart_enabled(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+
+    if enabled {
+        app.autolaunch().enable()
+    } else {
+        app.autolaunch().disable()
+    }
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

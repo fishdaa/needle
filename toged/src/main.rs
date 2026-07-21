@@ -335,15 +335,13 @@ fn install_watches(watcher: &mut FanotifyWatcher, dirs: &[PathBuf]) -> WatcherSt
     for dir in dirs {
         match watcher.watch(dir) {
             Ok(()) => {}
-            Err(e)
-                if e.kind() == io::ErrorKind::PermissionDenied
-                    || e.kind() == io::ErrorKind::NotFound
-                    || e.raw_os_error() == Some(28) =>
-            {
+            Err(error) => {
                 watcher_status.watch_failure_count += 1;
-            }
-            Err(_) => {
-                watcher_status.watch_failure_count += 1;
+                eprintln!(
+                    "Failed to install fanotify filesystem watch for {}: {}",
+                    dir.display(),
+                    error
+                );
             }
         }
     }
@@ -775,7 +773,7 @@ fn start_watcher(
             }
 
             let mut watcher = match FanotifyWatcher::new() {
-                Ok(w) => w,
+                Ok(watcher) => watcher,
                 Err(e) => {
                     eprintln!("Failed to create fanotify watcher: {}", e);
                     mark_watcher_unavailable(&state, &format!("initialization error: {e}"));
@@ -784,7 +782,6 @@ fn start_watcher(
             };
 
             let dirs = discover_roots(&config);
-
             let watcher_status = install_watches(&mut watcher, &dirs);
             {
                 let mut st = state.lock().unwrap();

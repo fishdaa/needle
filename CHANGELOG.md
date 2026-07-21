@@ -16,7 +16,6 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 - chore(deps): Bump regex from 1.13.0 to 1.13.1 (#26)
 
-
 ## [0.1.15] - 2026-07-13
 
 ### Fixed

@@ -10,6 +10,7 @@ pub struct AppState {
     window_counter: AtomicU64,
     exiting: AtomicBool,
     pressed_window_hotkeys: AtomicU8,
+    started_automatically: bool,
 }
 
 impl Default for AppState {
@@ -27,6 +28,7 @@ impl AppState {
             window_counter: AtomicU64::new(1),
             exiting: AtomicBool::new(false),
             pressed_window_hotkeys: AtomicU8::new(0),
+            started_automatically: started_automatically(std::env::args_os()),
         }
     }
 
@@ -63,6 +65,10 @@ impl AppState {
         self.pressed_window_hotkeys.store(0, Ordering::SeqCst);
     }
 
+    pub fn started_automatically(&self) -> bool {
+        self.started_automatically
+    }
+
     pub fn config_path(&self) -> PathBuf {
         self.config_path.clone()
     }
@@ -74,6 +80,11 @@ impl AppState {
     pub fn save_config(&self, config: &Config) -> Result<(), String> {
         config.save(&self.config_path)
     }
+}
+
+fn started_automatically(args: impl IntoIterator<Item = impl AsRef<std::ffi::OsStr>>) -> bool {
+    args.into_iter()
+        .any(|arg| arg.as_ref() == std::ffi::OsStr::new("--startup"))
 }
 
 fn default_config_path() -> PathBuf {
@@ -89,7 +100,13 @@ fn default_config_path() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::AppState;
+    use super::{AppState, started_automatically};
+
+    #[test]
+    fn startup_flag_marks_an_automatic_launch() {
+        assert!(started_automatically(["toge-gui", "--startup"]));
+        assert!(!started_automatically(["toge-gui"]));
+    }
 
     #[test]
     fn window_hotkeys_are_edge_triggered_without_a_time_delay() {

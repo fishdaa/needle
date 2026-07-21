@@ -32,6 +32,9 @@
 
   let isLoading = $state(true)
   let error = $state<string | null>(null)
+  let selectedPage = $state('General')
+  let savedAutostart = $state<boolean | null>(null)
+  let draftAutostart = $state(false)
   let savedSettings = $state<KeyboardSettings | null>(null)
   let draftSettings = $state<KeyboardSettings | null>(null)
   let commandFilter = $state('')
@@ -44,9 +47,14 @@
 
   onMount(async () => {
     try {
-      const settings = await loadKeyboardSettings()
+      const [settings, autostart] = await Promise.all([
+        loadKeyboardSettings(),
+        invoke<boolean>('is_autostart_enabled')
+      ])
       savedSettings = cloneSettings(settings)
       draftSettings = cloneSettings(settings)
+      savedAutostart = autostart
+      draftAutostart = autostart
     } catch (e) {
       error = String(e)
     } finally {
@@ -78,7 +86,8 @@
   )
 
   const hasUnsavedChanges = $derived(
-    !!draftSettings && !!savedSettings && JSON.stringify(draftSettings) !== JSON.stringify(savedSettings)
+    (!!draftSettings && !!savedSettings && JSON.stringify(draftSettings) !== JSON.stringify(savedSettings)) ||
+      (savedAutostart !== null && draftAutostart !== savedAutostart)
   )
 
   const replacementTargets = $derived.by(() => {
@@ -101,10 +110,16 @@
     if (!draftSettings) return
 
     try {
-      const normalized = await saveKeyboardSettings(cloneSettings(draftSettings))
-      setKeyboardSettings(normalized)
-      savedSettings = cloneSettings(normalized)
-      draftSettings = cloneSettings(normalized)
+      if (savedAutostart !== draftAutostart) {
+        await invoke('set_autostart_enabled', { enabled: draftAutostart })
+        savedAutostart = draftAutostart
+      }
+      if (JSON.stringify(draftSettings) !== JSON.stringify(savedSettings)) {
+        const normalized = await saveKeyboardSettings(cloneSettings(draftSettings))
+        setKeyboardSettings(normalized)
+        savedSettings = cloneSettings(normalized)
+        draftSettings = cloneSettings(normalized)
+      }
       error = null
       if (closeAfter) {
         await invoke('close_options_window')
@@ -206,8 +221,8 @@
 
 {#if isLoading}
   <div class="loading">Loading keyboard settings...</div>
-{:else if !draftSettings || !savedSettings}
-  <div class="loading">Unable to load keyboard settings.</div>
+{:else if !draftSettings || !savedSettings || savedAutostart === null}
+  <div class="loading">Unable to load settings.</div>
 {:else}
   <div class="options-window">
     <div class="title-bar">Everything Options</div>
@@ -216,9 +231,10 @@
         {#each navItems as item}
           <button
             class="nav-item"
-            class:active={item === 'Keyboard'}
+            class:active={item === selectedPage}
             type="button"
-            disabled={item !== 'Keyboard'}
+            disabled={item !== 'General' && item !== 'Keyboard'}
+            onclick={() => (selectedPage = item)}
           >
             {item}
           </button>
@@ -226,7 +242,25 @@
       </aside>
 
       <section class="panel">
-        <div class="panel-card">
+        {#if selectedPage === 'General'}
+          <div class="panel-card general-options">
+            <fieldset>
+              <legend>Startup</legend>
+              <label class="checkbox-row">
+                <input type="checkbox" bind:checked={draftAutostart} />
+                <span>Start Toge on system startup</span>
+              </label>
+              <p>
+                Starts Toge in the background with its tray icon and index ready. The search window stays hidden until you open it.
+              </p>
+            </fieldset>
+
+            {#if error}
+              <p class="error-text">{error}</p>
+            {/if}
+          </div>
+        {:else}
+          <div class="panel-card">
           <label class="field-row">
             <span>New window Hotkey:</span>
             <input
@@ -310,10 +344,15 @@
           {#if error}
             <p class="error-text">{error}</p>
           {/if}
-        </div>
+          </div>
+        {/if}
 
         <div class="footer">
-          <button type="button" onclick={restoreDefaults}>Restore Defaults</button>
+          {#if selectedPage === 'Keyboard'}
+            <button type="button" onclick={restoreDefaults}>Restore Defaults</button>
+          {:else}
+            <span></span>
+          {/if}
           <div class="footer-actions">
             <button type="button" onclick={() => applyChanges(true)}>OK</button>
             <button type="button" onclick={closeWindow}>Cancel</button>
@@ -436,6 +475,28 @@
     border: 1px solid #b9b9b9;
     background: #f6f6f6;
     padding: 10px 12px 12px;
+  }
+
+  .general-options fieldset {
+    border: 1px solid #b9b9b9;
+    padding: 12px;
+  }
+
+  .general-options legend {
+    padding: 0 5px;
+  }
+
+  .checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .general-options p:not(.error-text) {
+    max-width: 560px;
+    margin: 8px 0 0 24px;
+    color: #555;
+    line-height: 1.4;
   }
 
   .field-row {
